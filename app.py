@@ -17,12 +17,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 選項與 Header (解決問題 1)
+# 僅隱藏右上角前三個選項（Share、Star、Edit/GitHub），保留三點選單（主題切換）
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
+    /* 隱藏 Share 按鈕 */
+    [data-testid="stHeaderShareButton"] {
+        display: none !important;
+    }
+    /* 隱藏 Star (加到書籤/ GitHub Star) 與 Edit/GitHub 相關按鈕 */
+    header [data-testid="stElementToolbar"], 
+    header a[href*="github.com"],
+    header button[title*="Star"],
+    header button[aria-label*="Star"] {
+        display: none !important;
+    }
+    /* 確保 Header 整體保持顯示，不干擾右上角的 Streamlit 三點選單 (#MainMenu) */
+    header {
+        visibility: visible !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
