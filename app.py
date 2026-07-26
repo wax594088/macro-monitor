@@ -35,24 +35,16 @@ st.markdown("""
     header {
         visibility: visible !important;
     }
-    </style>
-
-    /* 隱藏 GitHub 圖示按鈕 */
-    header [data-testid="stToolbar"] a[href*="github.com"],
-    header button[title*="GitHub"],
-    header [data-testid="stElementToolbar"] {
-        display: none !important;
-    }
-    /* 隱藏文字包含 Fork 的按鈕 */
-    header button:has-text("Fork"),
-    header [kind="header"] {
-        display: none !important;
-    }
     /* 針對新版 Streamlit 工具列按鈕的精準隱藏（保留最右側的主選單） */
     div[data-testid="stToolbar"] > div {
         gap: 0rem;
     }
     div[data-testid="stToolbar"] button:not([aria-label*="Menu"]) {
+        display: none !important;
+    }
+    /* 隱藏文字包含 Fork 的按鈕 */
+    header button:has-text("Fork"),
+    header [kind="header"] {
         display: none !important;
     }
     </style>
