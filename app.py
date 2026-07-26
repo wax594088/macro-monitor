@@ -627,7 +627,7 @@ with tab_home:
         st.markdown("**監控用意：** 監控企業短期無擔保融資成本。<br>**判斷方式：** 異常飆升代表短期借貸市場凍結。<br>**危機標準：** 在無升息背景下異常急升。", unsafe_allow_html=True)
     with col6:
         st.plotly_chart(draw_line_chart("貼現窗口借款 (WPCREDIT)", wupdai_data[0], wupdai_data[3], wupdai_data[1], wupdai_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監控銀行體系的緊急資金需求。<br>**判斷方式：** 正常情況下數值應趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映中小型銀行出現急劇流動性缺口。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監控銀行體系應對緊急流動性缺口之需求。<br>**判斷方式：** 正常情況下數值趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映金融機構出現流動性危機。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -654,10 +654,10 @@ with tab_home:
     col11, col12 = st.columns(2)
     with col11:
         st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 預警中長期經濟衰退機率。<br>**判斷方式：** 利差為負即發生倒掛。<br>**危機標準：** 深度倒掛後急速反彈轉正（熊市陡峭化）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：深度倒掛後急速反彈突破 0 轉正（陡峭化）。", unsafe_allow_html=True)
     with col12:
         st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 反映短期資金成本與長期景氣預期的落差。<br>**危機標準：** 利差跌破 0 進入倒掛。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：結束倒掛並急促拉升轉正（降息循環與衰退降臨）。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -711,17 +711,17 @@ with tab_home:
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
         st.plotly_chart(draw_bias_chart("大盤乖離冷熱指標", tw_bias_df, tw_bias_status, tw_bias_val, tw_bias_date), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或破位轉弱。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -4% 短線空頭破位。<br>**危機標準：** 跌破 -4.0% 反映多頭結構破壞，短線價格結構轉弱。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或乖離過大。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -4% 短線超賣乖離過大。<br>**危機標準：** 跌破 -4.0% 反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
 
     st.write("---")
 
     tw_chip3, tw_chip4 = st.columns(2)
     with tw_chip3:
         st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，需結合外資現貨買賣超綜合研判。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 排除常態避險後，淨空單增加代表避險看壞，重點在於短線空單激增速度。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
     with tw_chip4:
         st.plotly_chart(draw_line_chart("散戶小台淨未平倉", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶如於大盤下跌時大幅加碼淨多單，代表市場籌碼尚未清洗乾淨，容易引發多頭踩踏破底。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶於大盤下跌時大幅加碼淨多單追跌抄底，代表籌碼沉澱不良，易引發多頭踩踏。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
