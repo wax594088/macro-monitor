@@ -238,7 +238,7 @@ def get_taiwan_electronics_export_data(danger_threshold=0.0):
         return pd.DataFrame(), 0, "", False
 
 @st.cache_data(ttl=3600)
-def get_usdtwd_data(danger_threshold=32.5, is_greater_danger=True):
+def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
     try:
         df = yf.Ticker("TWD=X").history(start=start_date, end=end_date)
         df = df.reset_index()[['Date', 'Close']]
@@ -251,7 +251,7 @@ def get_usdtwd_data(danger_threshold=32.5, is_greater_danger=True):
         return pd.DataFrame(), 0, "", False
 
 @st.cache_data(ttl=3600)
-def get_short_term_taiex_leverage_divergence(danger_threshold=140.0):
+def get_short_term_taiex_leverage_divergence(danger_threshold=160.0):
     try:
         df_yf = yf.Ticker("^TWII").history(start=start_date, end=end_date).reset_index()
         if not df_yf.empty:
@@ -301,7 +301,7 @@ def get_tw_futures_chip(token):
                 if not df_tx.empty:
                     tx_val = df_tx['Value'].iloc[-1]
                     tx_date = df_tx['Date'].iloc[-1].strftime('%Y/%m/%d')
-                    tx_danger = tx_val < -30000
+                    tx_danger = tx_val < -45000
     except Exception:
         pass
 
@@ -568,10 +568,10 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    wupdai_data = get_fred_data("WPCREDIT", 10000, True, api_key)
+    wupdai_data = get_fred_data("WPCREDIT", 25000, True, api_key)
     walcl_data = get_fred_data("WALCL", float('inf'), True, api_key)
-    rrp_data = get_fred_data("RRPONTSYD", 200, False, api_key)
-    icsa_data = get_fred_data("ICSA", 300000, True, api_key)
+    rrp_data = get_fred_data("RRPONTSYD", 50, False, api_key)
+    icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
     t10y2y_data = get_fred_data("T10Y2Y", 0.0, False, api_key)
@@ -582,7 +582,7 @@ with tab_home:
     cg_ratio_data = get_copper_gold_ratio(3.5)
 
     # 抓取 台灣指標
-    twd_data = get_usdtwd_data(32.5, True)
+    twd_data = get_usdtwd_data(33.0, True)
     
     # 臺指期/台股 20日年化歷史波動率
     tw_hv_data = get_taiwan_historical_volatility(25.0, True)
@@ -593,8 +593,8 @@ with tab_home:
     # 串接中央銀行開放資料集抓取 M1B 與 M2 剪刀差數據
     tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
 
-    # 抓取台股平衡型槓桿乖離指標（20MA 月線模型）
-    tw_margin_taiex_data = get_short_term_taiex_leverage_divergence(140.0)
+    # 抓取大盤月線乖離過熱指標（20MA 月線模型）
+    tw_margin_taiex_data = get_short_term_taiex_leverage_divergence(160.0)
 
     # 呼叫 FinMind 期貨籌碼接口
     tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
@@ -653,7 +653,7 @@ with tab_home:
         st.markdown("**監控用意：** 監控企業短期無擔保融資成本。<br>**判斷方式：** 異常飆升代表短期借貸市場凍結。<br>**危機標準：** 在無升息背景下異常急升。", unsafe_allow_html=True)
     with col6:
         st.plotly_chart(draw_line_chart("貼現窗口借款 (WPCREDIT)", wupdai_data[0], wupdai_data[3], wupdai_data[1], wupdai_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監控銀行體系的緊急資金需求。<br>**判斷方式：** 正常情況下數值應趨近於零。<br>**危機標準：** 借款規模無預警急遽飆升。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監控銀行體系的緊急資金需求。<br>**判斷方式：** 正常情況下數值應趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映中小型銀行出現急劇流動性缺口。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -663,14 +663,14 @@ with tab_home:
         st.markdown("**監控用意：** 監測聯準會擴表或縮表進度。<br>**判斷方式：** 資產急升代表聯準會注水。<br>**危機標準：** 短期內資產規模非理性暴增。", unsafe_allow_html=True)
     with col8:
         st.plotly_chart(draw_line_chart("隔夜逆回購餘額 (RRPONTSYD)", rrp_data[0], rrp_data[3], rrp_data[1], rrp_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監測金融體系的過剩流動性。<br>**判斷方式：** 持續下滑代表多餘資金被消耗。<br>**危機標準：** 餘額快速見底且未見補充。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監測金融體系的過剩流動性。<br>**判斷方式：** 持續下滑代表多餘資金被消耗。<br>**危機標準：** 餘額跌破 500 億美元，代表過剩資金池已耗盡，後續縮表將直接抽離銀行準備金。", unsafe_allow_html=True)
 
     st.write("---")
 
     col9, col10 = st.columns(2)
     with col9:
         st.plotly_chart(draw_line_chart("初領失業救濟金 (ICSA)", icsa_data[0], icsa_data[3], icsa_data[1], icsa_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監控勞動力市場短期動能與裁員狀況。<br>**判斷方式：** 趨勢持續向上代表企業加速裁員。<br>**危機標準：** 數值連續數週突破 30 萬人。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監控勞動力市場短期動能與裁員狀況。<br>**判斷方式：** 趨勢持續向上代表企業加速裁員。<br>**危機標準：** 數值連續數週突破 26 萬人，反映就業市場明顯惡化。", unsafe_allow_html=True)
     with col10:
         st.write("")
 
@@ -680,7 +680,7 @@ with tab_home:
     col11, col12 = st.columns(2)
     with col11:
         st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 預警中長期經濟衰退機率。<br>**判斷方式：** 利差為負即發生倒掛。<br>**危機標準：** 深度倒掛後急速反彈轉正。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 預警中長期經濟衰退機率。<br>**判斷方式：** 利差為負即發生倒掛。<br>**危機標準：** 深度倒掛後急速反彈轉正（熊市陡峭化）。", unsafe_allow_html=True)
     with col12:
         st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 反映短期資金成本與長期景氣預期的落差。<br>**危機標準：** 利差跌破 0 進入倒掛。", unsafe_allow_html=True)
@@ -722,7 +722,7 @@ with tab_home:
     tw_fund1, tw_fund2 = st.columns(2)
     with tw_fund1:
         st.plotly_chart(draw_line_chart("美元兌新台幣匯率 (USD/TWD)", twd_data[0], twd_data[3], twd_data[1], twd_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並跌破關鍵整數關卡（如 32.5）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並突破關鍵整數防線（33.0）。", unsafe_allow_html=True)
     with tw_fund2:
         st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger, tw_m1b_m2_diff, tw_m1b_m2_date), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 衡量國內股市資金動態與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
@@ -736,18 +736,18 @@ with tab_home:
         st.plotly_chart(draw_line_chart("台指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
-        st.plotly_chart(draw_line_chart("大盤槓桿情緒與乖離指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察大盤指數相對於月線成本（20MA）的乖離與短線情緒過熱風險。<br>**判斷方式：** 數值放大代表短線多頭過熱，數值收縮代表月線乖離修正。<br>**危機標準：** 指標因月線跌破而觸發警戒，反映短線籌碼鬆動與壓力。", unsafe_allow_html=True)
+        st.plotly_chart(draw_line_chart("大盤月線乖離過熱指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 觀察大盤指數相對於月線（20MA）的價格偏離程度。<br>**判斷方式：** 數值遠高於 100 代表短線走勢過熱，遠低於 100 代表乖離過大呈超賣。<br>**危機標準：** 指標跌破 160.0（約當跌破 20MA 達 4%），反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
 
     st.write("---")
 
     tw_chip3, tw_chip4 = st.columns(2)
     with tw_chip3:
         st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，淨多單代表看好。<br>**危機標準：** 淨空單大量累積突破 30,000 口且現貨連續賣超。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，需結合外資現貨買賣超綜合研判。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
     with tw_chip4:
         st.plotly_chart(draw_line_chart("散戶小台淨未平倉", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶習性通常為盤跌時做多，急噴時做空。<br>**危機標準：** 散戶淨多單異常激增且大盤持續破底。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶習性通常為盤跌時做多，急噴時做空。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
