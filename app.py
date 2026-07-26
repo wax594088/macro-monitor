@@ -721,7 +721,7 @@ with tab_home:
         st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，需結合外資現貨買賣超綜合研判。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
     with tw_chip4:
         st.plotly_chart(draw_line_chart("散戶小台淨未平倉", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶習性通常為盤跌時做多，急噴時做空。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶如於大盤下跌時大幅加碼淨多單，代表市場籌碼尚未清洗乾淨，容易引發多頭踩踏破底。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
