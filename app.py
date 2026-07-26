@@ -360,7 +360,7 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
     elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
-    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title  or "初領失業救濟金" in title:
+    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title  or "初領失業救濟金" in title or "美國製造業新訂單總額" in title:
         title_text = f"{title} [{current_date}: {current_val:,.0f}]"
     else:
         title_text = f"{title} [{current_date}: {current_val:,.2f}]"
