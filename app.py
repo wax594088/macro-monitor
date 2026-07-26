@@ -737,7 +737,7 @@ with tab_home:
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
         st.plotly_chart(draw_line_chart("大盤月線乖離過熱指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察大盤指數相對於月線（20MA）的價格偏離程度。<br>**判斷方式：** 數值遠高於 100 代表短線走勢過熱，遠低於 100 代表乖離過大呈超賣。<br>**危機標準：** 指標跌破 160.0（約當跌破 20MA 達 4%），反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格乖離程度，判定短線過熱或破位轉弱。<br>**判斷方式：** 基準值為 166.67（大盤等於月線）。高於 175 代表高於月線 5%（短線過熱）；低於 160 代表跌破月線 4%（短線破位）。<br>**危機標準：** 數值跌破 160.0，反映大盤跌破月線支撐且乖離擴大，短線價格結構轉弱。", unsafe_allow_html=True)
 
     st.write("---")
 
