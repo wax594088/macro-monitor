@@ -105,22 +105,25 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 商業銀行準備金總額年增率 (TOTRESNS，跌破 -5.0% 反紅底)
+# 商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
 @st.cache_data(ttl=3600)
-def get_totresns_yoy_data(danger_threshold=-5.0, key=None):
+def get_reserve_ratio_data(danger_threshold=10.0, key=None):
     try:
         if key:
             fred = Fred(api_key=key)
-            data = fred.get_series("TOTRESNS", observation_start=start_date - pd.DateOffset(years=1), observation_end=end_date)
-            df = pd.DataFrame(data, columns=['Raw']).dropna().reset_index()
-            df.columns = ['Date', 'Raw']
+            res = fred.get_series("TOTRESNS", observation_start=start_date, observation_end=end_date)
+            walcl = fred.get_series("WALCL", observation_start=start_date, observation_end=end_date)
         else:
-            df = web.DataReader("TOTRESNS", 'fred', start_date - pd.DateOffset(years=1), end_date).dropna().reset_index()
-            df.columns = ['Date', 'Raw']
+            res = web.DataReader("TOTRESNS", 'fred', start_date, end_date)['TOTRESNS']
+            walcl = web.DataReader("WALCL", 'fred', start_date, end_date)['WALCL']
 
-        df['Value'] = df['Raw'].pct_change(12) * 100
-        df = df.dropna().reset_index(drop=True)
-        df = df[df['Date'] >= start_date].reset_index(drop=True)
+        df_res = pd.DataFrame(res, columns=['Res']).dropna()
+        df_walcl = pd.DataFrame(walcl, columns=['Walcl']).dropna()
+        
+        df = pd.merge_asof(df_res.sort_index(), df_walcl.sort_index(), left_index=True, right_index=True, direction='nearest')
+        df['Value'] = (df['Res'] * 1000 / df['Walcl']) * 100
+        df = df.dropna().reset_index()
+        df.columns = ['Date', 'Res', 'Walcl', 'Value']
 
         current_val = df['Value'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
