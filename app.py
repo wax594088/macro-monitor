@@ -105,7 +105,7 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
+# 商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
 @st.cache_data(ttl=3600)
 def get_reserve_ratio_data(danger_threshold=10.0, key=None):
     try:
@@ -120,8 +120,6 @@ def get_reserve_ratio_data(danger_threshold=10.0, key=None):
         df_res = pd.DataFrame(res, columns=['Res']).dropna()
         df_walcl = pd.DataFrame(walcl, columns=['Walcl']).dropna()
         
-        # WALCL 為百萬美元，TOTRESNS 為十億美元，需換算同單位 (都轉換為百萬美元)
-        # FRED 中的 TOTRESNS 單位為 Billions of U.S. Dollars, WALCL 為 Millions of U.S. Dollars
         df = pd.merge_asof(df_res.sort_index(), df_walcl.sort_index(), left_index=True, right_index=True, direction='nearest')
         df['Value'] = (df['Res'] * 1000 / df['Walcl']) * 100
         df = df.dropna().reset_index()
@@ -134,7 +132,7 @@ def get_reserve_ratio_data(danger_threshold=10.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：銅金比 (結合 200 日移動平均線趨勢判斷，低於 200SMA 且當前數值極低反紅底)
+# 銅金比 (結合 200 日移動平均線趨勢判斷)
 @st.cache_data(ttl=3600)
 def get_copper_gold_ratio():
     try:
@@ -144,7 +142,6 @@ def get_copper_gold_ratio():
         df.columns = ['Date', 'Value']
         df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
         
-        # 計算 200SMA
         df['SMA200'] = df['Value'].rolling(window=200).mean()
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
@@ -152,7 +149,6 @@ def get_copper_gold_ratio():
         current_sma = df['SMA200'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         
-        # 當銅金比低於 200日均線代表景氣動能偏弱
         is_danger = current_val < current_sma
         return df, current_val, current_date, is_danger
     except Exception:
@@ -320,7 +316,7 @@ def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：大盤月線乖離率 (破位門檻調整為 -5.0%)
+# 大盤月線乖離率 (破位門檻 -5.0%)
 @st.cache_data(ttl=3600)
 def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
     try:
@@ -341,7 +337,7 @@ def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
             elif current_val < breakdown_threshold:
                 status = "breakdown"
 
-            is_danger = (status == "breakdown")  # 僅破位時計入頂部危機總數
+            is_danger = (status == "breakdown")
             return df, current_val, current_date, status, is_danger
     except Exception:
         pass
@@ -447,20 +443,32 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
     fig = go.Figure()
     
     # 特殊處理銅金比繪製雙線
-    if "銅金比" in title and 'SMA200' in df.columns:
+    has_legend = "銅金比" in title
+    if has_legend and 'SMA200' in df.columns:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], name="銅金比", line=dict(color=line_color, width=2)))
         fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA200'], name="200MA", line=dict(color='gray', width=1.5, dash='dash')))
     else:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
 
+    # 動態設定 margin 與 height，若有圖例則在底部增加空間
+    b_margin = 60 if has_legend else 30
+    chart_height = 280 if has_legend else 250
+
     fig.update_layout(
         title={'text': title_text, 'font': {'size': 16, 'color': '#333333'}},
-        margin=dict(l=30, r=30, t=40, b=30),
-        height=250,
+        margin=dict(l=30, r=30, t=40, b=b_margin),
+        height=chart_height,
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
         uirevision='dataset',
-        showlegend=("銅金比" in title),
+        showlegend=has_legend,
+        legend=dict(
+            orientation="h",       # 設定為水平排列
+            yanchor="top",         # 對齊頂部
+            y=-0.25,               # 置於 X 軸年份標籤正下方
+            xanchor="center",      # 水平置中
+            x=0.5                  # 置於圖表正中央
+        ),
         xaxis=dict(showgrid=False, type='date', autorange=True, tickfont=dict(color='#333333'), fixedrange=True),
         yaxis=dict(showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True, tickfont=dict(color='#333333'))
     )
@@ -643,9 +651,9 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)   # 修正：門檻調整為 10,000 百萬美元
+    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)
     walcl_data = get_walcl_change_data(3.0, api_key)
-    totresns_data = get_reserve_ratio_data(10.0, api_key)  # 修正：改採準備金佔聯準會資產比例，低於 10% 反紅底
+    totresns_data = get_reserve_ratio_data(10.0, api_key)
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
@@ -654,7 +662,7 @@ with tab_home:
     nosrdisa_data = get_amtmno_yoy_data(0.0, api_key)
     sahm_data = get_fred_data("SAHMREALTIME", 0.5, True, api_key)
     cfnai_data = get_fred_data("CFNAI", -0.7, False, api_key)
-    cg_ratio_data = get_copper_gold_ratio()  # 修正：結合 200SMA 動態判斷
+    cg_ratio_data = get_copper_gold_ratio()
 
     # 抓取 台灣指標
     twd_data = get_usdtwd_data(33.0, True)
