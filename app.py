@@ -650,9 +650,9 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  
+    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)
     walcl_data = get_walcl_change_data(3.0, api_key)
-    totresns_data = get_totresns_yoy_data(-5.0, api_key)  
+    totresns_data = get_reserve_ratio_data(10.0, api_key)
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
