@@ -620,7 +620,7 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("WPCRED", 25000, True, api_key)  
+    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  
     walcl_data = get_walcl_change_data(3.0, api_key)
     totresns_data = get_totresns_yoy_data(-5.0, api_key)  # 修正：取代過期的隔夜逆回購，監控商業銀行準備金年增率
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
