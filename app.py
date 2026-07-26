@@ -17,35 +17,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 僅隱藏右上角前三個選項（Share、Star、Edit/GitHub），保留三點選單（主題切換）
+# 隱藏右上角 Streamlit 原生選單與工具列（保留標籤頁與頁面內容）
 st.markdown("""
     <style>
-    /* 隱藏 Share 按鈕 */
-    [data-testid="stHeaderShareButton"] {
-        display: none !important;
-    }
-    /* 隱藏 Star (加到書籤/ GitHub Star) 與 Edit/GitHub 相關按鈕 */
-    header [data-testid="stElementToolbar"], 
-    header a[href*="github.com"],
-    header button[title*="Star"],
-    header button[aria-label*="Star"] {
-        display: none !important;
-    }
-    /* 確保 Header 整體保持顯示，不干擾右上角的 Streamlit 三點選單 (#MainMenu) */
-    header {
-        visibility: visible !important;
-    }
-    /* 隱藏文字包含 Fork 的按鈕 */
-    header button:has-text("Fork"),
-    header [kind="header"] {
-        display: none !important;
-    }
-    /* 隱藏 GitHub 圖示按鈕 */
-    header [data-testid="stToolbar"] a[href*="github.com"],
-    header button[title*="GitHub"],
-    header [data-testid="stElementToolbar"] {
-        display: none !important;
-    }
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -371,14 +348,13 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
             height=250,
             xaxis=dict(showgrid=False, visible=False),
             yaxis=dict(showgrid=False, visible=False),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0, 0, 0, 0)'
         )
         return fig
 
-    # 危險時背景給予淡紅，正常時設為透明以相容 Dark / Light 模式 (解決問題 3)
-    bg_color = 'rgba(255, 235, 235, 0.2)' if is_danger else 'rgba(0,0,0,0)'
-    line_color = '#ff4d4f' if is_danger else '#1890ff'
+    # 設置在危險狀態時背景變為淡紅色；正常時為白底/透明
+    bg_color = 'rgba(255, 235, 235, 1)' if is_danger else 'rgba(255, 255, 255, 1)'
+    line_color = 'red' if is_danger else '#1f77b4'
 
     if "銅金比" in title:
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
@@ -389,10 +365,9 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
 
     fig = go.Figure(data=go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
     
-    # 設置標題、軸線文字顏色以適應 Dark 模式 (解決問題 3)
-    # fixedrange=True 鎖定座標軸，避免選取放大 (解決問題 2)
+    # 優化 Dark 模式下的字體與網格顏色顯示
     fig.update_layout(
-        title={'text': title_text, 'font': {'size': 16, 'color': '#888888'}},
+        title={'text': title_text, 'font': {'size': 16, 'color': '#333333'}},
         margin=dict(l=30, r=30, t=40, b=30),
         height=250,
         paper_bgcolor=bg_color,
@@ -402,15 +377,15 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
             showgrid=False, 
             type='date',
             autorange=True,
-            fixedrange=True,
-            tickfont=dict(color='#888888')
+            tickfont=dict(color='#333333'),
+            fixedrange=True
         ),
         yaxis=dict(
             showgrid=True, 
-            gridcolor='rgba(128, 128, 128, 0.2)', 
+            gridcolor='#e0e0e0', 
             autorange=True, 
             fixedrange=True,
-            tickfont=dict(color='#888888')
+            tickfont=dict(color='#333333')
         )
     )
     return fig
@@ -423,12 +398,11 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
             height=340,
             xaxis=dict(showgrid=False, visible=False),
             yaxis=dict(showgrid=False, visible=False),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0, 0, 0, 0)'
         )
         return fig
 
-    bg_color = 'rgba(255, 235, 235, 0.2)' if is_danger else 'rgba(0,0,0,0)'
+    bg_color = 'rgba(255, 235, 235, 1)' if is_danger else 'rgba(255, 255, 255, 1)'
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -463,9 +437,8 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
         secondary_y=False
     )
 
-    # 設置文字顏色與鎖定座標軸 (解決問題 2, 3)
     fig.update_layout(
-        title={'text': f"台灣-M1B vs. M2 [剪刀差 {current_date}: {current_diff:,.2f}%]", 'font': {'size': 16, 'color': '#888888'}},
+        title={'text': f"台灣-M1B vs. M2 [剪刀差 {current_date}: {current_diff:,.2f}%]", 'font': {'size': 16, 'color': '#333333'}},
         height=340,
         margin=dict(l=30, r=30, t=40, b=60),
         paper_bgcolor=bg_color,
@@ -476,7 +449,7 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
             y=-0.45, 
             xanchor="center", 
             x=0.5,
-            font=dict(color='#888888')
+            font=dict(color='#333333')
         ),
         bargap=0.4,
         uirevision='m1b_m2_dataset'
@@ -484,30 +457,30 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
 
     fig.update_yaxes(
         title_text="Percent (%)", 
+        title_font=dict(color='#333333'),
+        tickfont=dict(color='#333333'),
         secondary_y=False, 
         showgrid=True, 
-        gridcolor='rgba(128, 128, 128, 0.2)',
+        gridcolor='#e0e0e0',
         autorange=True,
-        fixedrange=True,
-        title_font=dict(color='#888888'),
-        tickfont=dict(color='#888888')
+        fixedrange=True
     )
     
     fig.update_yaxes(
         title_text="Percent (%)", 
+        title_font=dict(color='#333333'),
+        tickfont=dict(color='#333333'),
         secondary_y=True, 
         showgrid=False,
         autorange=True,
-        fixedrange=True,
-        title_font=dict(color='#888888'),
-        tickfont=dict(color='#888888')
+        fixedrange=True
     )
 
     fig.update_xaxes(
         autorange=True,
-        fixedrange=True,
         type='date',
-        tickfont=dict(color='#888888')
+        tickfont=dict(color='#333333'),
+        fixedrange=True
     )
 
     return fig
@@ -557,7 +530,7 @@ def draw_bar_gauge(danger_count, total_count=22):
         text="▼",
         showarrow=False,
         yshift=48,
-        font=dict(size=36, color="#888888")
+        font=dict(size=36, color="#2c3e50")
     )
 
     fig.update_layout(
@@ -639,7 +612,7 @@ with tab_home:
 
     _, stage_text = get_stage_info(danger_total)
 
-    # 全面加上 config={'staticPlot': True} 鎖定互動 (解決問題 2)
+    # 頂部儀表板：設置 staticPlot=True 關閉互動
     st.plotly_chart(
         draw_bar_gauge(danger_total, 22), 
         use_container_width=True, 
@@ -750,7 +723,7 @@ with tab_home:
         st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並跌破關鍵整數關卡（如 32.5）。", unsafe_allow_html=True)
     with tw_fund2:
         st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger, tw_m1b_m2_diff, tw_m1b_m2_date), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 衡量國內股市資金動能與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 衡量國內股市資金動態與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
 
     st.write("---")
 
