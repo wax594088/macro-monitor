@@ -654,10 +654,10 @@ with tab_home:
     col11, col12 = st.columns(2)
     with col11:
         st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：深度倒掛後急速反彈突破 0 轉正（陡峭化）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。2.爆發期：深度倒掛後急速反彈突破 0 轉正（牛市/熊市陡峭化）。", unsafe_allow_html=True)
     with col12:
         st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：結束倒掛並急促拉升轉正（降息循環與衰退降臨）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。2.爆發期：結束倒掛並急促拉升轉正（降息循環啟動與衰退降臨）。", unsafe_allow_html=True)
 
     st.write("---")
 
