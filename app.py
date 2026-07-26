@@ -317,7 +317,7 @@ def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
         return pd.DataFrame(), 0, "", False
 
 @st.cache_data(ttl=3600)
-def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-4.0):
+def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
     try:
         df_yf = yf.Ticker("^TWII").history(start=start_date, end=end_date).reset_index()
         if not df_yf.empty:
@@ -441,7 +441,6 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
 
     fig = go.Figure()
 
-    # 特殊處理銅金比繪製雙線
     has_legend = "銅金比" in title
     if has_legend and 'SMA200' in df.columns:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], name="銅金比", line=dict(color=line_color, width=2)))
@@ -449,7 +448,6 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
     else:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
 
-    # 動態設定 margin 與 height，若有圖例則在底部增加空間
     b_margin = 60 if has_legend else 30
     chart_height = 280 if has_legend else 250
 
@@ -462,11 +460,11 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         uirevision='dataset',
         showlegend=has_legend,
         legend=dict(
-            orientation="h",       # 設定為水平排列
-            yanchor="top",         # 對齊頂部
-            y=-0.25,               # 置於 X 軸年份標籤正下方
-            xanchor="center",      # 水平置中
-            x=0.5                  # 置於圖表正中央
+            orientation="h",
+            yanchor="top",
+            y=-0.25,
+            xanchor="center",
+            x=0.5
         ),
         xaxis=dict(showgrid=False, type='date', autorange=True, tickfont=dict(color='#333333'), fixedrange=True),
         yaxis=dict(showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True, tickfont=dict(color='#333333'))
@@ -650,7 +648,7 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)
+    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  # 修正：代碼由 DPCREDIT 改為 WPC
     walcl_data = get_walcl_change_data(3.0, api_key)
     totresns_data = get_reserve_ratio_data(10.0, api_key)
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
@@ -812,17 +810,17 @@ with tab_home:
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
         st.plotly_chart(draw_bias_chart("大盤乖離冷熱指標", tw_bias_df, tw_bias_status, tw_bias_val, tw_bias_date), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或乖離過大。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -4% 短線超賣乖離過大。<br>**危機標準：** 跌破 -4.0% 反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或乖離過大。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -5% 短線超賣乖離過大。<br>**危機標準：** 跌破 -5.0% 反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
 
     st.write("---")
 
     tw_chip3, tw_chip4 = st.columns(2)
     with tw_chip3:
         st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 排除常態避險後，淨空單增加代表避險看壞，重點在於短線空單激增速度。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察外資對台股大盤的避險與方向性布局。<br>**判斷方式：** 需結合現貨買賣超觀察，若期貨淨空單急遽累積且現貨大賣，代表實質看空。<br>**危機標準：** 淨空單大量累積突破 45,000 口且現貨同步賣超。", unsafe_allow_html=True)
     with tw_chip4:
         st.plotly_chart(draw_line_chart("散戶小台淨未平倉", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶於大盤下跌時大幅加碼淨多單追跌抄底，代表籌碼沉澱不良，易引發多頭踩踏。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 觀察市場散戶槓桿部位，作為極端行情的反指標。<br>**判斷方式：** 大盤下跌時散戶淨多單快速累積追跌抄底，代表籌碼沉澱不良，易引發多頭踩踏。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
