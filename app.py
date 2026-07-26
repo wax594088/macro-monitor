@@ -105,25 +105,22 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
+# 商業銀行準備金總額年增率 (TOTRESNS，跌破 -5.0% 反紅底)
 @st.cache_data(ttl=3600)
-def get_reserve_ratio_data(danger_threshold=10.0, key=None):
+def get_totresns_yoy_data(danger_threshold=-5.0, key=None):
     try:
         if key:
             fred = Fred(api_key=key)
-            res = fred.get_series("TOTRESNS", observation_start=start_date, observation_end=end_date)
-            walcl = fred.get_series("WALCL", observation_start=start_date, observation_end=end_date)
+            data = fred.get_series("TOTRESNS", observation_start=start_date - pd.DateOffset(years=1), observation_end=end_date)
+            df = pd.DataFrame(data, columns=['Raw']).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
         else:
-            res = web.DataReader("TOTRESNS", 'fred', start_date, end_date)['TOTRESNS']
-            walcl = web.DataReader("WALCL", 'fred', start_date, end_date)['WALCL']
+            df = web.DataReader("TOTRESNS", 'fred', start_date - pd.DateOffset(years=1), end_date).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
 
-        df_res = pd.DataFrame(res, columns=['Res']).dropna()
-        df_walcl = pd.DataFrame(walcl, columns=['Walcl']).dropna()
-        
-        df = pd.merge_asof(df_res.sort_index(), df_walcl.sort_index(), left_index=True, right_index=True, direction='nearest')
-        df['Value'] = (df['Res'] * 1000 / df['Walcl']) * 100
-        df = df.dropna().reset_index()
-        df.columns = ['Date', 'Res', 'Walcl', 'Value']
+        df['Value'] = df['Raw'].pct_change(12) * 100
+        df = df.dropna().reset_index(drop=True)
+        df = df[df['Date'] >= start_date].reset_index(drop=True)
 
         current_val = df['Value'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
@@ -132,24 +129,17 @@ def get_reserve_ratio_data(danger_threshold=10.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 銅金比 (結合 200 日移動平均線趨勢判斷)
+# 銅金比門檻 (小於 0.0015 反紅底)
 @st.cache_data(ttl=3600)
-def get_copper_gold_ratio():
+def get_copper_gold_ratio(danger_threshold=0.0015):
     try:
-        cu = yf.Ticker("HG=F").history(start=start_date - pd.DateOffset(days=300), end=end_date)[['Close']]
-        au = yf.Ticker("GC=F").history(start=start_date - pd.DateOffset(days=300), end=end_date)[['Close']]
+        cu = yf.Ticker("HG=F").history(start=start_date, end=end_date)[['Close']]
+        au = yf.Ticker("GC=F").history(start=start_date, end=end_date)[['Close']]
         df = (cu / au).dropna().reset_index()
         df.columns = ['Date', 'Value']
-        df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
-        
-        df['SMA200'] = df['Value'].rolling(window=200).mean()
-        df = df[df['Date'] >= start_date].reset_index(drop=True)
-
         current_val = df['Value'].iloc[-1]
-        current_sma = df['SMA200'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
-        
-        is_danger = current_val < current_sma
+        is_danger = current_val < danger_threshold
         return df, current_val, current_date, is_danger
     except Exception:
         return pd.DataFrame(), 0, "", False
@@ -430,7 +420,7 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
 
     if "銅金比" in title:
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
-    elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title or "變動率" in title or "準備金佔總資產比" in title:
+    elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title or "變動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
     elif "貼現窗口借款" in title:
         title_text = f"{title} [{current_date}: {current_val:,.0f} 百萬美元]"
@@ -441,15 +431,13 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
 
     fig = go.Figure()
 
-    # 特殊處理銅金比繪製雙線
-    has_legend = "銅金比" in title
-    if has_legend and 'SMA200' in df.columns:
+    if "銅金比" in title and 'SMA200' in df.columns:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], name="銅金比", line=dict(color=line_color, width=2)))
         fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA200'], name="200MA", line=dict(color='gray', width=1.5, dash='dash')))
     else:
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
 
-    # 動態設定 margin 與 height，若有圖例則在底部增加空間
+    has_legend = "銅金比" in title
     b_margin = 60 if has_legend else 30
     chart_height = 280 if has_legend else 250
 
@@ -462,11 +450,11 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         uirevision='dataset',
         showlegend=has_legend,
         legend=dict(
-            orientation="h",       # 設定為水平排列
-            yanchor="top",         # 對齊頂部
-            y=-0.25,               # 置於 X 軸年份標籤正下方
-            xanchor="center",      # 水平置中
-            x=0.5                  # 置於圖表正中央
+            orientation="h",
+            yanchor="top",
+            y=-0.25,
+            xanchor="center",
+            x=0.5
         ),
         xaxis=dict(showgrid=False, type='date', autorange=True, tickfont=dict(color='#333333'), fixedrange=True),
         yaxis=dict(showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True, tickfont=dict(color='#333333'))
@@ -501,7 +489,7 @@ def draw_bias_chart(title, df, status, current_val=0, current_date=""):
 
     fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.7)
     fig.add_hline(y=5.0, line_dash="dot", line_color="#e67e22", opacity=0.6)
-    fig.add_hline(y=-5.0, line_dash="dot", line_color="red", opacity=0.6)
+    fig.add_hline(y=-4.0, line_dash="dot", line_color="red", opacity=0.6)
 
     fig.update_layout(
         title={'text': title_text, 'font': {'size': 16, 'color': '#333333'}},
@@ -650,9 +638,9 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)
+    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  
     walcl_data = get_walcl_change_data(3.0, api_key)
-    totresns_data = get_reserve_ratio_data(10.0, api_key)
+    totresns_data = get_totresns_yoy_data(-5.0, api_key)  
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
@@ -661,7 +649,7 @@ with tab_home:
     nosrdisa_data = get_amtmno_yoy_data(0.0, api_key)
     sahm_data = get_fred_data("SAHMREALTIME", 0.5, True, api_key)
     cfnai_data = get_fred_data("CFNAI", -0.7, False, api_key)
-    cg_ratio_data = get_copper_gold_ratio()
+    cg_ratio_data = get_copper_gold_ratio(0.0015)
 
     # 抓取 台灣指標
     twd_data = get_usdtwd_data(33.0, True)
@@ -670,7 +658,7 @@ with tab_home:
     tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
 
     # 抓取 大盤月線乖離率 (%)
-    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -5.0)
+    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -4.0)
 
     # 呼叫 FinMind 期貨籌碼接口
     tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
@@ -735,10 +723,10 @@ with tab_home:
     col7, col8 = st.columns(2)
     with col7:
         st.plotly_chart(draw_line_chart("聯準會總資產近月變動率 (WALCL)", walcl_data[0], walcl_data[3], walcl_data[1], walcl_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監測聯準會是否進行緊急擴表注水或持續縮表。<br>**判斷方式：** 變動率急升代表央行介入救市，通常伴隨系統性風險發生。<br>**危機標準：** 近 4 週資產規模變動率突破 +3.0%。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監測聯準會是否進行緊急擴表注水。<br>**判斷方式：** 資產規模短期內急遽膨脹代表市場發生系統性風險。<br>**危機標準：** 近 4 週資產規模變動率突破 +3.0%。", unsafe_allow_html=True)
     with col8:
-        st.plotly_chart(draw_line_chart("商業銀行準備金佔總資產比 (TOTRESNS/WALCL)", totresns_data[0], totresns_data[3], totresns_data[1], totresns_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監測美國銀行體系的基礎流動性充裕程度。<br>**判斷方式：** 準備金占美聯儲資產比例下滑代表金融體系流動性抽離。<br>**危機標準：** 比率跌破 10.0%，反映銀行體系流動性水位降至緊縮警戒區。", unsafe_allow_html=True)
+        st.plotly_chart(draw_line_chart("商業銀行準備金年增率 (TOTRESNS)", totresns_data[0], totresns_data[3], totresns_data[1], totresns_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 監測美國銀行體系的基礎流動性池變化。<br>**判斷方式：** 準備金年增率大幅下滑代表金融體系資金遭持續抽離。<br>**危機標準：** 年增率跌破 -5.0%，反映銀行體系流動性水位降至警戒區。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -755,10 +743,10 @@ with tab_home:
     col11, col12 = st.columns(2)
     with col11:
         st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 倒掛為前兆，倒掛後因降息預期導致利差快速拉回轉正（降息型陡峭化）為衰退主升段。<br>**危機標準：** 深度倒掛後，利差於短時間內快速突破 0% 轉正。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：深度倒掛後急速反彈突破 0 轉正（陡峭化）。", unsafe_allow_html=True)
     with col12:
         st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 結束倒掛並急促拉升轉正（反映衰退降臨與降息循環啟動）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：結束倒掛並急促拉升轉正（降息循環與衰退降臨）。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -777,8 +765,8 @@ with tab_home:
         st.plotly_chart(draw_line_chart("芝加哥全國活動指數 (CFNAI)", cfnai_data[0], cfnai_data[3], cfnai_data[1], cfnai_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 綜合評估整體經濟活動成長率。<br>**判斷方式：** 小於 0 為低於歷史趨勢。<br>**危機標準：** 三個月移動平均值跌破 -0.7。", unsafe_allow_html=True)
     with col16:
-        st.plotly_chart(draw_line_chart("銅金比 (含200SMA)", cg_ratio_data[0], cg_ratio_data[3], cg_ratio_data[1], cg_ratio_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 衡量市場風險偏好與景氣擴張力道。<br>**判斷方式：** 當前數值低於 200 日均線（SMA）代表實體需求弱化且避險情緒升溫。<br>**危機標準：** 銅金比跌破 200 日均線趨勢向下。", unsafe_allow_html=True)
+        st.plotly_chart(draw_line_chart("銅金比", cg_ratio_data[0], cg_ratio_data[3], cg_ratio_data[1], cg_ratio_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 衡量市場風險偏好與景氣擴張力道。<br>**判斷方式：** 數值持續低迷代表市場避險情緒濃厚且實體需求孱弱。<br>**危機標準：** 銅金比絕對值跌破 0.0015 水準。", unsafe_allow_html=True)
 
     st.divider()
     st.subheader("台灣經濟及股市指標")
@@ -787,7 +775,7 @@ with tab_home:
     tw_basic1, tw_basic2 = st.columns(2)
     with tw_basic1:
         st.plotly_chart(draw_line_chart("財政部電子零組件出口年增率", tw_export_data[0], tw_export_data[3], tw_export_data[1], tw_export_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 預判台股半導體與科技業基本面轉折。<br>**判斷方式：** 趨勢領先台股科技企業營收約 1 至 2 個月。<br>**危機標準：** 年增率高檔轉折反轉，或跌破 0.0% 進入產業收縮期。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 預判台股半導體與科技業基本面轉折。<br>**判斷方式：** 趨勢領先台股科技企業營收約 1 至 2 個月。<br>**危機標準：** 年增率高檔反轉且由正轉負。", unsafe_allow_html=True)
     with tw_basic2:
         st.write("")
 
