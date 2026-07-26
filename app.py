@@ -733,10 +733,10 @@ with tab_home:
     
     tw_chip1, tw_chip2 = st.columns(2)
     with tw_chip1:
-        st.plotly_chart(draw_line_chart("臺指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.plotly_chart(draw_line_chart("台指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
-        st.plotly_chart(draw_line_chart("台股大盤槓桿情緒與乖離指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.plotly_chart(draw_line_chart("大盤槓桿情緒與乖離指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察大盤指數相對於月線成本（20MA）的乖離與短線情緒過熱風險。<br>**判斷方式：** 數值放大代表短線多頭過熱，數值收縮代表月線乖離修正。<br>**危機標準：** 指標因月線跌破而觸發警戒，反映短線籌碼鬆動與壓力。", unsafe_allow_html=True)
 
     st.write("---")
@@ -746,7 +746,7 @@ with tab_home:
         st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，淨多單代表看好。<br>**危機標準：** 淨空單大量累積突破 30,000 口且現貨連續賣超。", unsafe_allow_html=True)
     with tw_chip4:
-        st.plotly_chart(draw_line_chart("散戶小台淨未平倉 (散戶多空比)", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.plotly_chart(draw_line_chart("散戶小台淨未平倉", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶習性通常為盤跌時做多，急噴時做空。<br>**危機標準：** 散戶淨多單異常激增且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
