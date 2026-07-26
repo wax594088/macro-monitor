@@ -17,6 +17,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 隱藏右上角 Streamlit 選項與 Header (解決問題 1)
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
+
 # 側邊欄設定
 st.sidebar.markdown("### 系統設定")
 # 優先讀取 Streamlit 雲端加密設定，若無則預設為空字串
@@ -97,8 +106,6 @@ def get_taiwan_m1b_m2_data(danger_threshold=0.0):
     }
     
     try:
-        # 加上 verify=False 避免雲端 Linux 伺服器驗證央行 SSL 憑證失敗
-        # 停用 urllib3 警告訊息
         import requests.packages.urllib3
         requests.packages.urllib3.disable_warnings()
         
@@ -109,7 +116,6 @@ def get_taiwan_m1b_m2_data(danger_threshold=0.0):
 
         date_col = df_raw.columns[0]
 
-        # 動態比對欄位名稱
         m1b_cols = [c for c in df_raw.columns if 'M1B' in str(c) and ('年增率' in str(c) or '%' in str(c))]
         m2_cols = [c for c in df_raw.columns if 'M2' in str(c) and ('年增率' in str(c) or '%' in str(c))]
 
@@ -342,12 +348,14 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
             height=250,
             xaxis=dict(showgrid=False, visible=False),
             yaxis=dict(showgrid=False, visible=False),
-            paper_bgcolor='rgba(245, 245, 245, 1)'
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
         )
         return fig
 
-    bg_color = 'rgba(255, 235, 235, 1)' if is_danger else 'rgba(255, 255, 255, 1)'
-    line_color = 'red' if is_danger else 'blue'
+    # 危險時背景給予淡紅，正常時設為透明以相容 Dark / Light 模式 (解決問題 3)
+    bg_color = 'rgba(255, 235, 235, 0.2)' if is_danger else 'rgba(0,0,0,0)'
+    line_color = '#ff4d4f' if is_danger else '#1890ff'
 
     if "銅金比" in title:
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
@@ -358,8 +366,10 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
 
     fig = go.Figure(data=go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
     
+    # 設置標題、軸線文字顏色以適應 Dark 模式 (解決問題 3)
+    # fixedrange=True 鎖定座標軸，避免選取放大 (解決問題 2)
     fig.update_layout(
-        title={'text': title_text, 'font': {'size': 16}},
+        title={'text': title_text, 'font': {'size': 16, 'color': '#888888'}},
         margin=dict(l=30, r=30, t=40, b=30),
         height=250,
         paper_bgcolor=bg_color,
@@ -368,13 +378,16 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         xaxis=dict(
             showgrid=False, 
             type='date',
-            autorange=True
+            autorange=True,
+            fixedrange=True,
+            tickfont=dict(color='#888888')
         ),
         yaxis=dict(
             showgrid=True, 
-            gridcolor='lightgrey', 
+            gridcolor='rgba(128, 128, 128, 0.2)', 
             autorange=True, 
-            fixedrange=False
+            fixedrange=True,
+            tickfont=dict(color='#888888')
         )
     )
     return fig
@@ -387,11 +400,12 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
             height=340,
             xaxis=dict(showgrid=False, visible=False),
             yaxis=dict(showgrid=False, visible=False),
-            paper_bgcolor='rgba(245, 245, 245, 1)'
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
         )
         return fig
 
-    bg_color = 'rgba(255, 235, 235, 1)' if is_danger else 'rgba(255, 255, 255, 1)'
+    bg_color = 'rgba(255, 235, 235, 0.2)' if is_danger else 'rgba(0,0,0,0)'
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -426,8 +440,9 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
         secondary_y=False
     )
 
+    # 設置文字顏色與鎖定座標軸 (解決問題 2, 3)
     fig.update_layout(
-        title={'text': f"台灣-M1B vs. M2 [剪刀差 {current_date}: {current_diff:,.2f}%]", 'font': {'size': 16}},
+        title={'text': f"台灣-M1B vs. M2 [剪刀差 {current_date}: {current_diff:,.2f}%]", 'font': {'size': 16, 'color': '#888888'}},
         height=340,
         margin=dict(l=30, r=30, t=40, b=60),
         paper_bgcolor=bg_color,
@@ -437,7 +452,8 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
             yanchor="bottom", 
             y=-0.45, 
             xanchor="center", 
-            x=0.5
+            x=0.5,
+            font=dict(color='#888888')
         ),
         bargap=0.4,
         uirevision='m1b_m2_dataset'
@@ -447,9 +463,11 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
         title_text="Percent (%)", 
         secondary_y=False, 
         showgrid=True, 
-        gridcolor='lightgrey',
+        gridcolor='rgba(128, 128, 128, 0.2)',
         autorange=True,
-        fixedrange=False
+        fixedrange=True,
+        title_font=dict(color='#888888'),
+        tickfont=dict(color='#888888')
     )
     
     fig.update_yaxes(
@@ -457,12 +475,16 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
         secondary_y=True, 
         showgrid=False,
         autorange=True,
-        fixedrange=False
+        fixedrange=True,
+        title_font=dict(color='#888888'),
+        tickfont=dict(color='#888888')
     )
 
     fig.update_xaxes(
         autorange=True,
-        type='date'
+        fixedrange=True,
+        type='date',
+        tickfont=dict(color='#888888')
     )
 
     return fig
@@ -479,11 +501,9 @@ def get_stage_info(danger_count):
     else:
         return "#e74c3c", "恐慌"      # 紅色 (19-22)
 
-# 第 15、16、17 項修正：三倍高度、靜態鎖定防止選取破圖、英文全數轉為中文標籤
 def draw_bar_gauge(danger_count, total_count=22):
     fig = go.Figure()
 
-    # 第 17 項：英文字轉中文，依序為正常、注意、警戒、危險、恐慌
     sections = [
         {"range": [0, 4], "color": "#1e824c", "label": "正常"},
         {"range": [4, 8], "color": "#2ecc71", "label": "注意"},
@@ -503,22 +523,20 @@ def draw_bar_gauge(danger_count, total_count=22):
             text=f"<b>{sec['label']}</b>",
             textposition='inside',
             insidetextanchor='middle',
-            textfont=dict(size=18, color="white"),  # 文字放大提高清晰度
+            textfont=dict(size=18, color="white"),
             hoverinfo='none',
             showlegend=False
         ))
 
-    # 指標：懸浮大型倒三角形游標
     fig.add_annotation(
         x=danger_count,
         y="狀態",
         text="▼",
         showarrow=False,
         yshift=48,
-        font=dict(size=36, color="#2c3e50")
+        font=dict(size=36, color="#888888")
     )
 
-    # 第 15 & 16 項：高度變為三倍高 (180px)，固定座標軸禁止手動縮放選取
     fig.update_layout(
         barmode='stack',
         xaxis=dict(
@@ -526,14 +544,14 @@ def draw_bar_gauge(danger_count, total_count=22):
             showgrid=False, 
             zeroline=False, 
             visible=False,
-            fixedrange=True  # 第 16 項：鎖定 X 軸禁止手動拉伸/選取
+            fixedrange=True
         ),
         yaxis=dict(
             showgrid=False, 
             visible=False,
-            fixedrange=True  # 第 16 項：鎖定 Y 軸禁止手動拉伸/選取
+            fixedrange=True
         ),
-        height=180,           # 第 15 項：高度調增為 180px (三倍高)
+        height=180,
         margin=dict(l=15, r=15, t=40, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
@@ -598,7 +616,7 @@ with tab_home:
 
     _, stage_text = get_stage_info(danger_total)
 
-    # 第 16 項修正：設置 config={'staticPlot': True} 強制關閉圖表互動功能，防止滑鼠拉選放大
+    # 全面加上 config={'staticPlot': True} 鎖定互動 (解決問題 2)
     st.plotly_chart(
         draw_bar_gauge(danger_total, 22), 
         use_container_width=True, 
@@ -613,47 +631,47 @@ with tab_home:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(draw_line_chart("金融壓力指數 (STLFSI4)", stlfsi_data[0], stlfsi_data[3], stlfsi_data[1], stlfsi_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("金融壓力指數 (STLFSI4)", stlfsi_data[0], stlfsi_data[3], stlfsi_data[1], stlfsi_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控金融體系流動性與壓力。<br>**判斷方式：** 數值 0 代表歷史平均。大於 0 代表壓力升高。<br>**危機標準：** 數值快速攀升並突破 2.0。", unsafe_allow_html=True)
     with col2:
-        st.plotly_chart(draw_line_chart("VIX 恐慌指數 (VIXCLS)", vix_data[0], vix_data[3], vix_data[1], vix_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("VIX 恐慌指數 (VIXCLS)", vix_data[0], vix_data[3], vix_data[1], vix_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控市場恐慌情緒與波動預期。<br>**判斷方式：** 數值急升代表市場避險情緒飆高。<br>**危機標準：** 數值突破 30 為實質恐慌。", unsafe_allow_html=True)
 
     st.write("---")
 
     col3, col4 = st.columns(2)
     with col3:
-        st.plotly_chart(draw_line_chart("高收益債利差 (BAMLH0A0HYM2)", hy_oas_data[0], hy_oas_data[3], hy_oas_data[1], hy_oas_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("高收益債利差 (BAMLH0A0HYM2)", hy_oas_data[0], hy_oas_data[3], hy_oas_data[1], hy_oas_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 衡量市場風險偏好與高風險企業違約機率。<br>**判斷方式：** 利差飆升代表機構大舉拋售高風險資產。<br>**危機標準：** 利差突破 6.0% 代表避險情緒升溫。", unsafe_allow_html=True)
     with col4:
-        st.plotly_chart(draw_line_chart("Baa 級企業債利差 (BAA10Y)", baa_data[0], baa_data[3], baa_data[1], baa_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("Baa 級企業債利差 (BAA10Y)", baa_data[0], baa_data[3], baa_data[1], baa_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控中等信用評級企業的融資成本與壓力。<br>**判斷方式：** 利差擴大代表實體企業籌資困難。<br>**危機標準：** 利差快速飆升並突破 3.0%。", unsafe_allow_html=True)
 
     st.write("---")
 
     col5, col6 = st.columns(2)
     with col5:
-        st.plotly_chart(draw_line_chart("金融商業本票利率 (DCPF3M)", dcpf3m_data[0], dcpf3m_data[3], dcpf3m_data[1], dcpf3m_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("金融商業本票利率 (DCPF3M)", dcpf3m_data[0], dcpf3m_data[3], dcpf3m_data[1], dcpf3m_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控企業短期無擔保融資成本。<br>**判斷方式：** 異常飆升代表短期借貸市場凍結。<br>**危機標準：** 在無升息背景下異常急升。", unsafe_allow_html=True)
     with col6:
-        st.plotly_chart(draw_line_chart("貼現窗口借款 (WPCREDIT)", wupdai_data[0], wupdai_data[3], wupdai_data[1], wupdai_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("貼現窗口借款 (WPCREDIT)", wupdai_data[0], wupdai_data[3], wupdai_data[1], wupdai_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控銀行體系的緊急資金需求。<br>**判斷方式：** 正常情況下數值應趨近於零。<br>**危機標準：** 借款規模無預警急遽飆升。", unsafe_allow_html=True)
 
     st.write("---")
 
     col7, col8 = st.columns(2)
     with col7:
-        st.plotly_chart(draw_line_chart("聯準會總資產 (WALCL)", walcl_data[0], walcl_data[3], walcl_data[1], walcl_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("聯準會總資產 (WALCL)", walcl_data[0], walcl_data[3], walcl_data[1], walcl_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監測聯準會擴表或縮表進度。<br>**判斷方式：** 資產急升代表聯準會注水。<br>**危機標準：** 短期內資產規模非理性暴增。", unsafe_allow_html=True)
     with col8:
-        st.plotly_chart(draw_line_chart("隔夜逆回購餘額 (RRPONTSYD)", rrp_data[0], rrp_data[3], rrp_data[1], rrp_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("隔夜逆回購餘額 (RRPONTSYD)", rrp_data[0], rrp_data[3], rrp_data[1], rrp_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監測金融體系的過剩流動性。<br>**判斷方式：** 持續下滑代表多餘資金被消耗。<br>**危機標準：** 餘額快速見底且未見補充。", unsafe_allow_html=True)
 
     st.write("---")
 
     col9, col10 = st.columns(2)
     with col9:
-        st.plotly_chart(draw_line_chart("初領失業救濟金 (ICSA)", icsa_data[0], icsa_data[3], icsa_data[1], icsa_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("初領失業救濟金 (ICSA)", icsa_data[0], icsa_data[3], icsa_data[1], icsa_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控勞動力市場短期動能與裁員狀況。<br>**判斷方式：** 趨勢持續向上代表企業加速裁員。<br>**危機標準：** 數值連續數週突破 30 萬人。", unsafe_allow_html=True)
     with col10:
         st.write("")
@@ -663,30 +681,30 @@ with tab_home:
 
     col11, col12 = st.columns(2)
     with col11:
-        st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 預警中長期經濟衰退機率。<br>**判斷方式：** 利差為負即發生倒掛。<br>**危機標準：** 深度倒掛後急速反彈轉正。", unsafe_allow_html=True)
     with col12:
-        st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 反映短期資金成本與長期景氣預期的落差。<br>**危機標準：** 利差跌破 0 進入倒掛。", unsafe_allow_html=True)
 
     st.write("---")
 
     col13, col14 = st.columns(2)
     with col13:
-        st.plotly_chart(draw_line_chart("美國製造業新訂單總額 (AMTMNO)", nosrdisa_data[0], nosrdisa_data[3], nosrdisa_data[1], nosrdisa_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("美國製造業新訂單總額 (AMTMNO)", nosrdisa_data[0], nosrdisa_data[3], nosrdisa_data[1], nosrdisa_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 預判製造業擴張或收縮之領先指標。<br>**判斷方式：** 顯示全美製造業絕對訂單金額。<br>**危機標準：** 金額於高檔反轉並連續下滑。", unsafe_allow_html=True)
     with col14:
-        st.plotly_chart(draw_line_chart("薩姆規則 (SAHMREALTIME)", sahm_data[0], sahm_data[3], sahm_data[1], sahm_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("薩姆規則 (SAHMREALTIME)", sahm_data[0], sahm_data[3], sahm_data[1], sahm_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 即時判定經濟是否已步入衰退。<br>**判斷方式：** 計算失業率移動平均值與低點差值。<br>**危機標準：** 差值突破 0.5 個百分點。", unsafe_allow_html=True)
 
     st.write("---")
 
     col15, col16 = st.columns(2)
     with col15:
-        st.plotly_chart(draw_line_chart("芝加哥全國活動指數 (CFNAI)", cfnai_data[0], cfnai_data[3], cfnai_data[1], cfnai_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("芝加哥全國活動指數 (CFNAI)", cfnai_data[0], cfnai_data[3], cfnai_data[1], cfnai_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 綜合評估整體經濟活動成長率。<br>**判斷方式：** 小於 0 為低於歷史趨勢。<br>**危機標準：** 三個月移動平均值跌破 -0.7。", unsafe_allow_html=True)
     with col16:
-        st.plotly_chart(draw_line_chart("銅金比", cg_ratio_data[0], cg_ratio_data[3], cg_ratio_data[1], cg_ratio_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("銅金比", cg_ratio_data[0], cg_ratio_data[3], cg_ratio_data[1], cg_ratio_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 衡量市場風險偏好與景氣擴張力道。<br>**判斷方式：** 持續攀升代表偏好風險。<br>**危機標準：** 股市創高但銅金比提早破底背離。", unsafe_allow_html=True)
 
     st.divider()
@@ -695,7 +713,7 @@ with tab_home:
     st.markdown("#### 基本面")
     tw_basic1, tw_basic2 = st.columns(2)
     with tw_basic1:
-        st.plotly_chart(draw_line_chart("財政部電子零組件出口年增率", tw_export_data[0], tw_export_data[3], tw_export_data[1], tw_export_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("財政部電子零組件出口年增率", tw_export_data[0], tw_export_data[3], tw_export_data[1], tw_export_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 預判台股半導體與科技業基本面轉折。<br>**判斷方式：** 趨勢領先台股科技企業營收約 1 至 2 個月。<br>**危機標準：** 年增率高檔反轉且由正轉負。", unsafe_allow_html=True)
     with tw_basic2:
         st.write("")
@@ -705,10 +723,10 @@ with tab_home:
     st.markdown("#### 資金面")
     tw_fund1, tw_fund2 = st.columns(2)
     with tw_fund1:
-        st.plotly_chart(draw_line_chart("美元兌新台幣匯率 (USD/TWD)", twd_data[0], twd_data[3], twd_data[1], twd_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("美元兌新台幣匯率 (USD/TWD)", twd_data[0], twd_data[3], twd_data[1], twd_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並跌破關鍵整數關卡（如 32.5）。", unsafe_allow_html=True)
     with tw_fund2:
-        st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger, tw_m1b_m2_diff, tw_m1b_m2_date), use_container_width=True)
+        st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger, tw_m1b_m2_diff, tw_m1b_m2_date), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 衡量國內股市資金動能與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
 
     st.write("---")
@@ -717,20 +735,20 @@ with tab_home:
     
     tw_chip1, tw_chip2 = st.columns(2)
     with tw_chip1:
-        st.plotly_chart(draw_line_chart("臺指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("臺指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
-        st.plotly_chart(draw_line_chart("台股大盤槓桿情緒與乖離指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("台股大盤槓桿情緒與乖離指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察大盤指數相對於月線成本（20MA）的乖離與短線情緒過熱風險。<br>**判斷方式：** 數值放大代表短線多頭過熱，數值收縮代表月線乖離修正。<br>**危機標準：** 指標因月線跌破而觸發警戒，反映短線籌碼鬆動與壓力。", unsafe_allow_html=True)
 
     st.write("---")
 
     tw_chip3, tw_chip4 = st.columns(2)
     with tw_chip3:
-        st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("外資台指期貨淨未平倉", tw_future_oi_data[0], tw_future_oi_data[3], tw_future_oi_data[1], tw_future_oi_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察外資對台股大盤的避險情緒。<br>**判斷方式：** 淨空單代表避險或看壞，淨多單代表看好。<br>**危機標準：** 淨空單大量累積突破 30,000 口且現貨連續賣超。", unsafe_allow_html=True)
     with tw_chip4:
-        st.plotly_chart(draw_line_chart("散戶小台淨未平倉 (散戶多空比)", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True)
+        st.plotly_chart(draw_line_chart("散戶小台淨未平倉 (散戶多空比)", tw_retail_oi_data[0], tw_retail_oi_data[3], tw_retail_oi_data[1], tw_retail_oi_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察散戶期貨部位，作為極端行情的反指標。<br>**判斷方式：** 散戶習性通常為盤跌時做多，急噴時做空。<br>**危機標準：** 散戶淨多單異常激增且大盤持續破底。", unsafe_allow_html=True)
 
 with tab_analysis:
