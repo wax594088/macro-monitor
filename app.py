@@ -17,21 +17,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 精準隱藏右上角社群工具列（Fork, Share, Star, GitHub 等），並保留右側三個點的主題設定選單
+# 隱藏右上角 Streamlit 原生選單與工具列（保留標籤頁與頁面內容）
 st.markdown("""
     <style>
-    /* 隱藏社群互動工具列（Fork, Share, Star, GitHub 按鈕群） */
-    [data-testid="stHeaderActionElements"] {
-        display: none !important;
-    }
-    /* 確保包含三個點（MainMenu）的標頭容器保持顯示 */
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    /* 隱藏底部 Streamlit 頁尾標誌 */
-    footer {
-        visibility: hidden;
-    }
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
