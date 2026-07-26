@@ -398,8 +398,8 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
     elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title or "變動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
-    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title or "初領失業救濟金" in title:
-        title_text = f"{title} [{current_date}: {current_val:,.0f}]"
+    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title or "初領失業救濟金" in title or "貼現窗口借款" in title:
+        title_text = f"{title} [{current_date}: {current_val:,.0f} 百萬美元]" if "貼現窗口借款" in title else f"{title} [{current_date}: {current_val:,.0f}]"
     else:
         title_text = f"{title} [{current_date}: {current_val:,.2f}]"
 
@@ -594,18 +594,18 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    wupdai_data = get_fred_data("WPCREDIT", 25000, True, api_key)
-    walcl_data = get_walcl_change_data(3.0, api_key)  # 修正：月增率 > 3.0% 觸發
+    discbwk_data = get_fred_data("DISCBWK", 25000, True, api_key)  # 修正：由 WPCREDIT 改為 DISCBWK (貼現窗口借款總額)
+    walcl_data = get_walcl_change_data(3.0, api_key)
     rrp_data = get_fred_data("RRPONTSYD", 50, False, api_key)
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
     t10y2y_data = get_fred_data("T10Y2Y", 0.0, False, api_key)
     t10y3m_data = get_fred_data("T10Y3M", 0.0, False, api_key)
-    nosrdisa_data = get_amtmno_yoy_data(0.0, api_key)  # 修正：YoY < 0.0% 觸發
+    nosrdisa_data = get_amtmno_yoy_data(0.0, api_key)
     sahm_data = get_fred_data("SAHMREALTIME", 0.5, True, api_key)
     cfnai_data = get_fred_data("CFNAI", -0.7, False, api_key)
-    cg_ratio_data = get_copper_gold_ratio(0.0015)  # 修正：門檻改為 0.0015
+    cg_ratio_data = get_copper_gold_ratio(0.0015)
 
     # 抓取 台灣指標
     twd_data = get_usdtwd_data(33.0, True)
@@ -626,7 +626,7 @@ with tab_home:
     # 統計全部觸發危險的指標數量 (共 22 項)
     danger_total = sum([
         stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3],
-        wupdai_data[3], walcl_data[3], rrp_data[3], icsa_data[3],
+        discbwk_data[3], walcl_data[3], rrp_data[3], icsa_data[3],
         t10y2y_data[3], t10y3m_data[3], nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3],
         twd_data[3], tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger,
         tw_hv_data[3], tw_future_oi_data[3], tw_retail_oi_data[3]
@@ -671,8 +671,8 @@ with tab_home:
         st.plotly_chart(draw_line_chart("金融商業本票利率 (DCPF3M)", dcpf3m_data[0], dcpf3m_data[3], dcpf3m_data[1], dcpf3m_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控企業短期無擔保融資成本。<br>**判斷方式：** 利率高檔攀升代表企業借貸成本增加。<br>**危機標準：** 利率絕對值突破 5.5% 反映融資壓力高漲。", unsafe_allow_html=True)
     with col6:
-        st.plotly_chart(draw_line_chart("貼現窗口借款 (WPCREDIT)", wupdai_data[0], wupdai_data[3], wupdai_data[1], wupdai_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監控銀行體系應對緊急流動性缺口之需求。<br>**判斷方式：** 正常情況下數值趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映金融機構出現極端流動性危機。", unsafe_allow_html=True)
+        st.plotly_chart(draw_line_chart("貼現窗口借款 (DISCBWK)", discbwk_data[0], discbwk_data[3], discbwk_data[1], discbwk_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 監控銀行體系應對緊急流動性缺口之需求。<br>**判斷方式：** 正常情況下借款金額趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映金融機構出現極端流動性危機。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -699,10 +699,10 @@ with tab_home:
     col11, col12 = st.columns(2)
     with col11:
         st.plotly_chart(draw_line_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data[0], t10y2y_data[3], t10y2y_data[1], t10y2y_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。2.爆發期：深度倒掛後急速反彈突破 0 轉正（陡峭化）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 觀察利差是否跌破 0（倒掛）與倒掛後是否急速回升。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：深度倒掛後急速反彈突破 0 轉正（陡峭化）。", unsafe_allow_html=True)
     with col12:
         st.plotly_chart(draw_line_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data[0], t10y3m_data[3], t10y3m_data[1], t10y3m_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。2.爆發期：結束倒掛並急促拉升轉正（降息循環與衰退降臨）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 1.預警期：利差跌破 0 進入倒掛。<br>2.爆發期：結束倒掛並急促拉升轉正（降息循環與衰退降臨）。", unsafe_allow_html=True)
 
     st.write("---")
 
