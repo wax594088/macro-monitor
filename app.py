@@ -360,7 +360,7 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
     elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
-    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title  or "初領失業救濟金" in title or "美國製造業新訂單總額" in title:
+    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title  or "初領失業救濟金" in title or "製造業新訂單總額" in title:
         title_text = f"{title} [{current_date}: {current_val:,.0f}]"
     else:
         title_text = f"{title} [{current_date}: {current_val:,.2f}]"
@@ -689,7 +689,7 @@ with tab_home:
 
     col13, col14 = st.columns(2)
     with col13:
-        st.plotly_chart(draw_line_chart("美國製造業新訂單總額 (AMTMNO)", nosrdisa_data[0], nosrdisa_data[3], nosrdisa_data[1], nosrdisa_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.plotly_chart(draw_line_chart("製造業新訂單總額 (AMTMNO)", nosrdisa_data[0], nosrdisa_data[3], nosrdisa_data[1], nosrdisa_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 預判製造業擴張或收縮之領先指標。<br>**判斷方式：** 顯示全美製造業絕對訂單金額。<br>**危機標準：** 金額於高檔反轉並連續下滑。", unsafe_allow_html=True)
     with col14:
         st.plotly_chart(draw_line_chart("薩姆規則 (SAHMREALTIME)", sahm_data[0], sahm_data[3], sahm_data[1], sahm_data[2]), use_container_width=True, config={'staticPlot': True})
