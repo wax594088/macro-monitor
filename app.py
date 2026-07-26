@@ -28,7 +28,6 @@ st.markdown("""
 
 # 側邊欄設定
 st.sidebar.markdown("### 系統設定")
-# 優先讀取 Streamlit 雲端加密設定，若無則預設為空字串
 api_key = st.secrets.get("FRED_API_KEY", "")
 finmind_token = st.secrets.get("FINMIND_TOKEN", "")
 
@@ -98,31 +97,22 @@ def get_taiwan_historical_volatility(danger_threshold=25.0, is_greater_danger=Tr
 @st.cache_data(ttl=3600)
 def get_taiwan_m1b_m2_data(danger_threshold=0.0):
     url = "https://www.cbc.gov.tw/public/data/OpenData/%E7%B6%93%E7%A0%94%E8%99%95/EF15M01.csv"
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
     }
-    
     try:
         import requests.packages.urllib3
         requests.packages.urllib3.disable_warnings()
         
         res = requests.get(url, headers=headers, timeout=15, verify=False)
         res.encoding = 'utf-8'
-        
         df_raw = pd.read_csv(io.StringIO(res.text))
 
         date_col = df_raw.columns[0]
-
         m1b_cols = [c for c in df_raw.columns if 'M1B' in str(c) and ('年增率' in str(c) or '%' in str(c))]
         m2_cols = [c for c in df_raw.columns if 'M2' in str(c) and ('年增率' in str(c) or '%' in str(c))]
-
-        if not m1b_cols:
-            m1b_cols = [c for c in df_raw.columns if 'M1B' in str(c)]
-        if not m2_cols:
-            m2_cols = [c for c in df_raw.columns if 'M2' in str(c)]
 
         m1b_rate_col = m1b_cols[0] if m1b_cols else df_raw.columns[28]
         m2_rate_col = m2_cols[0] if m2_cols else df_raw.columns[30]
@@ -179,7 +169,6 @@ def get_taiwan_electronics_export_data(danger_threshold=0.0):
 
         df = df.dropna(subset=[date_col, export_val_col]).copy()
         df[export_val_col] = pd.to_numeric(df[export_val_col], errors='coerce')
-
         df['clean_date'] = df[date_col].astype(str).str.strip()
         df = df[df['clean_date'].str.contains('月|\\d{5,}', regex=True)].copy()
 
@@ -188,16 +177,12 @@ def get_taiwan_electronics_export_data(danger_threshold=0.0):
             if '年' in val_str and '月' in val_str:
                 try:
                     parts = val_str.replace('月', '').split('年')
-                    year = int(parts[0])
-                    month = int(parts[1])
-                    return year, month
+                    return int(parts[0]), int(parts[1])
                 except Exception:
                     return None, None
             elif val_str.isdigit() and len(val_str) == 6:
                 try:
-                    year = int(val_str[:3])
-                    month = int(val_str[3:])
-                    return year, month
+                    return int(val_str[:3]), int(val_str[3:])
                 except Exception:
                     return None, None
             return None, None
@@ -213,14 +198,12 @@ def get_taiwan_electronics_export_data(danger_threshold=0.0):
         val_dict = dict(zip(zip(df['roc_year'], df['month']), df[export_val_col]))
 
         def get_ly_value(row):
-            ly_key = (row['roc_year'] - 1, row['month'])
-            return val_dict.get(ly_key, None)
+            return val_dict.get((row['roc_year'] - 1, row['month']), None)
 
         df['last_year_val'] = df.apply(get_ly_value, axis=1)
         df['Value'] = ((df[export_val_col] - df['last_year_val']) / df['last_year_val']) * 100
 
         df['Date'] = pd.to_datetime(df['roc_year'].apply(lambda y: y + 1911).astype(str) + '-' + df['month'].astype(str).str.zfill(2) + '-01')
-        
         df = df.dropna(subset=['Value']).sort_values('Date').reset_index(drop=True)
         
         five_years_ago = pd.Timestamp.now() - pd.DateOffset(years=5)
@@ -250,25 +233,33 @@ def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
+# 修正後：標準大盤月線乖離率 (%)，包含三階段狀態判斷
 @st.cache_data(ttl=3600)
-def get_short_term_taiex_leverage_divergence(danger_threshold=160.0):
+def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-4.0):
     try:
         df_yf = yf.Ticker("^TWII").history(start=start_date, end=end_date).reset_index()
         if not df_yf.empty:
             df_yf['Date'] = pd.to_datetime(df_yf['Date']).dt.tz_localize(None)
 
             ma20 = df_yf['Close'].rolling(window=20, min_periods=1).mean()
-            df_yf['Value'] = 166.67 * (df_yf['Close'] / ma20)
+            df_yf['Value'] = ((df_yf['Close'] - ma20) / ma20) * 100.0
             df = df_yf[['Date', 'Value']].dropna().sort_values('Date')
 
             current_val = df['Value'].iloc[-1]
             current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
-            is_danger = current_val < danger_threshold
-            return df, current_val, current_date, is_danger
+
+            status = "normal"
+            if current_val > overheat_threshold:
+                status = "overheat"
+            elif current_val < breakdown_threshold:
+                status = "breakdown"
+
+            is_danger = (status == "breakdown")  # 僅破位時計入頂部危機總數
+            return df, current_val, current_date, status, is_danger
     except Exception:
         pass
 
-    return pd.DataFrame(), 0, "", False
+    return pd.DataFrame(), 0, "", "normal", False
 
 @st.cache_data(ttl=3600)
 def get_tw_futures_chip(token):
@@ -352,7 +343,6 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         )
         return fig
 
-    # 設置在危險狀態時背景變為淡紅色；正常時為白底/透明
     bg_color = 'rgba(255, 235, 235, 1)' if is_danger else 'rgba(255, 255, 255, 1)'
     line_color = 'red' if is_danger else '#1f77b4'
 
@@ -360,14 +350,13 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
     elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
-    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title  or "初領失業救濟金" in title or "製造業新訂單總額" in title:
+    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title or "初領失業救濟金" in title or "製造業新訂單總額" in title:
         title_text = f"{title} [{current_date}: {current_val:,.0f}]"
     else:
         title_text = f"{title} [{current_date}: {current_val:,.2f}]"
 
     fig = go.Figure(data=go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
-    
-    # 優化 Dark 模式下的字體與網格顏色顯示
+
     fig.update_layout(
         title={'text': title_text, 'font': {'size': 16, 'color': '#333333'}},
         margin=dict(l=30, r=30, t=40, b=30),
@@ -375,20 +364,52 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
         uirevision='dataset',
-        xaxis=dict(
-            showgrid=False, 
-            type='date',
-            autorange=True,
-            tickfont=dict(color='#333333'),
-            fixedrange=True
-        ),
-        yaxis=dict(
-            showgrid=True, 
-            gridcolor='#e0e0e0', 
-            autorange=True, 
-            fixedrange=True,
-            tickfont=dict(color='#333333')
+        xaxis=dict(showgrid=False, type='date', autorange=True, tickfont=dict(color='#333333'), fixedrange=True),
+        yaxis=dict(showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True, tickfont=dict(color='#333333'))
+    )
+    return fig
+
+# 專門繪製大盤月線乖離率的繪圖函式，支援三種底色（淡紅、淡橘、白）與參考線
+def draw_bias_chart(title, df, status, current_val=0, current_date=""):
+    if df is None or df.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': title + " (資料加載中)", 'font': {'color': 'gray'}},
+            height=250,
+            xaxis=dict(showgrid=False, visible=False),
+            yaxis=dict(showgrid=False, visible=False),
+            paper_bgcolor='rgba(0, 0, 0, 0)'
         )
+        return fig
+
+    if status == "breakdown":
+        bg_color = 'rgba(255, 235, 235, 1)'   # 淡紅底 (破位)
+        line_color = 'red'
+    elif status == "overheat":
+        bg_color = 'rgba(255, 235, 200, 1)'   # 淡橘底 (過熱)
+        line_color = '#e67e22'
+    else:
+        bg_color = 'rgba(255, 255, 255, 1)'   # 白底 (正常)
+        line_color = '#1f77b4'
+
+    title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
+
+    fig = go.Figure(data=go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
+
+    # 加入關鍵參考線：0% 基準線、+5% 過熱線、-4% 破位線
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.7)
+    fig.add_hline(y=5.0, line_dash="dot", line_color="#e67e22", opacity=0.6)
+    fig.add_hline(y=-4.0, line_dash="dot", line_color="red", opacity=0.6)
+
+    fig.update_layout(
+        title={'text': title_text, 'font': {'size': 16, 'color': '#333333'}},
+        margin=dict(l=30, r=30, t=40, b=30),
+        height=250,
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
+        uirevision='bias_dataset',
+        xaxis=dict(showgrid=False, type='date', autorange=True, tickfont=dict(color='#333333'), fixedrange=True),
+        yaxis=dict(showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True, tickfont=dict(color='#333333'))
     )
     return fig
 
@@ -445,59 +466,28 @@ def draw_m1b_m2_chart(df, is_danger, current_diff, current_date):
         margin=dict(l=30, r=30, t=40, b=60),
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
-        legend=dict(
-            orientation="h", 
-            yanchor="bottom", 
-            y=-0.45, 
-            xanchor="center", 
-            x=0.5,
-            font=dict(color='#333333')
-        ),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.45, xanchor="center", x=0.5, font=dict(color='#333333')),
         bargap=0.4,
         uirevision='m1b_m2_dataset'
     )
 
-    fig.update_yaxes(
-        title_text="Percent (%)", 
-        title_font=dict(color='#333333'),
-        tickfont=dict(color='#333333'),
-        secondary_y=False, 
-        showgrid=True, 
-        gridcolor='#e0e0e0',
-        autorange=True,
-        fixedrange=True
-    )
-    
-    fig.update_yaxes(
-        title_text="Percent (%)", 
-        title_font=dict(color='#333333'),
-        tickfont=dict(color='#333333'),
-        secondary_y=True, 
-        showgrid=False,
-        autorange=True,
-        fixedrange=True
-    )
-
-    fig.update_xaxes(
-        autorange=True,
-        type='date',
-        tickfont=dict(color='#333333'),
-        fixedrange=True
-    )
+    fig.update_yaxes(title_text="Percent (%)", title_font=dict(color='#333333'), tickfont=dict(color='#333333'), secondary_y=False, showgrid=True, gridcolor='#e0e0e0', autorange=True, fixedrange=True)
+    fig.update_yaxes(title_text="Percent (%)", title_font=dict(color='#333333'), tickfont=dict(color='#333333'), secondary_y=True, showgrid=False, autorange=True, fixedrange=True)
+    fig.update_xaxes(autorange=True, type='date', tickfont=dict(color='#333333'), fixedrange=True)
 
     return fig
 
 def get_stage_info(danger_count):
     if 0 <= danger_count <= 4:
-        return "#1e824c", "正常"      # 深綠 (1-4)
+        return "#1e824c", "正常"
     elif 5 <= danger_count <= 8:
-        return "#2ecc71", "注意"      # 淺綠 (5-8)
+        return "#2ecc71", "注意"
     elif 9 <= danger_count <= 14:
-        return "#f1c40f", "警戒"     # 黃色 (9-14)
+        return "#f1c40f", "警戒"
     elif 15 <= danger_count <= 18:
-        return "#e67e22", "危險"     # 橘色 (15-18)
+        return "#e67e22", "危險"
     else:
-        return "#e74c3c", "恐慌"      # 紅色 (19-22)
+        return "#e74c3c", "恐慌"
 
 def draw_bar_gauge(danger_count, total_count=22):
     fig = go.Figure()
@@ -537,18 +527,8 @@ def draw_bar_gauge(danger_count, total_count=22):
 
     fig.update_layout(
         barmode='stack',
-        xaxis=dict(
-            range=[0, total_count], 
-            showgrid=False, 
-            zeroline=False, 
-            visible=False,
-            fixedrange=True
-        ),
-        yaxis=dict(
-            showgrid=False, 
-            visible=False,
-            fixedrange=True
-        ),
+        xaxis=dict(range=[0, total_count], showgrid=False, zeroline=False, visible=False, fixedrange=True),
+        yaxis=dict(showgrid=False, visible=False, fixedrange=True),
         height=180,
         margin=dict(l=15, r=15, t=40, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
@@ -583,18 +563,12 @@ with tab_home:
 
     # 抓取 台灣指標
     twd_data = get_usdtwd_data(33.0, True)
-    
-    # 臺指期/台股 20日年化歷史波動率
     tw_hv_data = get_taiwan_historical_volatility(25.0, True)
-    
-    # 串接財政部資料集抓取電子零組件出口年增率
     tw_export_data = get_taiwan_electronics_export_data(0.0)
-    
-    # 串接中央銀行開放資料集抓取 M1B 與 M2 剪刀差數據
     tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
 
-    # 抓取大盤月線乖離過熱指標（20MA 月線模型）
-    tw_margin_taiex_data = get_short_term_taiex_leverage_divergence(160.0)
+    # 抓取 大盤月線乖離率 (%)
+    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -4.0)
 
     # 呼叫 FinMind 期貨籌碼接口
     tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
@@ -608,7 +582,7 @@ with tab_home:
         stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3],
         wupdai_data[3], walcl_data[3], rrp_data[3], icsa_data[3],
         t10y2y_data[3], t10y3m_data[3], nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3],
-        twd_data[3], tw_export_data[3], tw_m1b_m2_danger, tw_margin_taiex_data[3],
+        twd_data[3], tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger,
         tw_hv_data[3], tw_future_oi_data[3], tw_retail_oi_data[3]
     ])
 
@@ -736,8 +710,8 @@ with tab_home:
         st.plotly_chart(draw_line_chart("台指期歷史波動率 (20日HV)", tw_hv_data[0], tw_hv_data[3], tw_hv_data[1], tw_hv_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
-        st.plotly_chart(draw_line_chart("大盤月線乖離過熱指標", tw_margin_taiex_data[0], tw_margin_taiex_data[3], tw_margin_taiex_data[1], tw_margin_taiex_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格乖離程度，判定短線過熱或破位轉弱。<br>**判斷方式：** 基準值為 166.67（大盤等於月線）。高於 175 代表高於月線 5%（短線過熱）；低於 160 代表跌破月線 4%（短線破位）。<br>**危機標準：** 數值跌破 160.0，反映大盤跌破月線支撐且乖離擴大，短線價格結構轉弱。", unsafe_allow_html=True)
+        st.plotly_chart(draw_bias_chart("大盤乖離冷熱指標", tw_bias_df, tw_bias_status, tw_bias_val, tw_bias_date), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或破位轉弱。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -4% 短線空頭破位。<br>**危機標準：** 跌破 -4.0% 反映多頭結構破壞，短線價格結構轉弱。", unsafe_allow_html=True)
 
     st.write("---")
 
