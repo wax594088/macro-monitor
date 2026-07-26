@@ -105,25 +105,22 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
+# 商業銀行準備金總額年增率 (TOTRESNS，跌破 -5.0% 反紅底)
 @st.cache_data(ttl=3600)
-def get_reserve_ratio_data(danger_threshold=10.0, key=None):
+def get_totresns_yoy_data(danger_threshold=-5.0, key=None):
     try:
         if key:
             fred = Fred(api_key=key)
-            res = fred.get_series("TOTRESNS", observation_start=start_date, observation_end=end_date)
-            walcl = fred.get_series("WALCL", observation_start=start_date, observation_end=end_date)
+            data = fred.get_series("TOTRESNS", observation_start=start_date - pd.DateOffset(years=1), observation_end=end_date)
+            df = pd.DataFrame(data, columns=['Raw']).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
         else:
-            res = web.DataReader("TOTRESNS", 'fred', start_date, end_date)['TOTRESNS']
-            walcl = web.DataReader("WALCL", 'fred', start_date, end_date)['WALCL']
+            df = web.DataReader("TOTRESNS", 'fred', start_date - pd.DateOffset(years=1), end_date).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
 
-        df_res = pd.DataFrame(res, columns=['Res']).dropna()
-        df_walcl = pd.DataFrame(walcl, columns=['Walcl']).dropna()
-        
-        df = pd.merge_asof(df_res.sort_index(), df_walcl.sort_index(), left_index=True, right_index=True, direction='nearest')
-        df['Value'] = (df['Res'] * 1000 / df['Walcl']) * 100
-        df = df.dropna().reset_index()
-        df.columns = ['Date', 'Res', 'Walcl', 'Value']
+        df['Value'] = df['Raw'].pct_change(12) * 100
+        df = df.dropna().reset_index(drop=True)
+        df = df[df['Date'] >= start_date].reset_index(drop=True)
 
         current_val = df['Value'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
@@ -641,9 +638,9 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("DPCREDIT", 10000, True, api_key)
+    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  
     walcl_data = get_walcl_change_data(3.0, api_key)
-    totresns_data = get_reserve_ratio_data(10.0, api_key) 
+    totresns_data = get_totresns_yoy_data(-5.0, api_key)  
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
@@ -661,7 +658,7 @@ with tab_home:
     tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
 
     # 抓取 大盤月線乖離率 (%)
-    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -5.0)
+    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -4.0)
 
     # 呼叫 FinMind 期貨籌碼接口
     tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
