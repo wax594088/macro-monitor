@@ -57,7 +57,7 @@ def get_fred_data(series_id, danger_threshold, is_greater_danger=True, key=None)
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：製造業新訂單總額 (改為計算 YoY 年增率，跌破 0% 反紅底)
+# 修正：製造業新訂單總額 (計算 YoY 年增率，跌破 0% 反紅底)
 @st.cache_data(ttl=3600)
 def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
     try:
@@ -70,7 +70,7 @@ def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
             df = web.DataReader("AMTMNO", 'fred', start_date - pd.DateOffset(years=1), end_date).dropna().reset_index()
             df.columns = ['Date', 'Raw']
 
-        df['Value'] = df['Raw'].pct_change(12) * 100  # 計算 YoY 年增率 (%)
+        df['Value'] = df['Raw'].pct_change(12) * 100
         df = df.dropna().reset_index(drop=True)
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
@@ -81,7 +81,7 @@ def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：聯準會總資產 (改為計算 4 週/單月變動率 %，短期暴增突破 3% 反紅底)
+# 修正：聯準會總資產 (計算 4 週變動率 %，突破 3% 反紅底)
 @st.cache_data(ttl=3600)
 def get_walcl_change_data(danger_threshold=3.0, key=None):
     try:
@@ -94,7 +94,7 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
             df = web.DataReader("WALCL", 'fred', start_date - pd.DateOffset(months=2), end_date).dropna().reset_index()
             df.columns = ['Date', 'Raw']
 
-        df['Value'] = df['Raw'].pct_change(4) * 100  # 計算近 4 週變動率 (%)
+        df['Value'] = df['Raw'].pct_change(4) * 100
         df = df.dropna().reset_index(drop=True)
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
@@ -105,7 +105,31 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 修正：銅金比門檻調回真實比例範圍 (小於 0.0015 反紅底)
+# 新增：商業銀行準備金總額年增率 (TOTRESNS，跌破 -5.0% 反紅底)
+@st.cache_data(ttl=3600)
+def get_totresns_yoy_data(danger_threshold=-5.0, key=None):
+    try:
+        if key:
+            fred = Fred(api_key=key)
+            data = fred.get_series("TOTRESNS", observation_start=start_date - pd.DateOffset(years=1), observation_end=end_date)
+            df = pd.DataFrame(data, columns=['Raw']).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
+        else:
+            df = web.DataReader("TOTRESNS", 'fred', start_date - pd.DateOffset(years=1), end_date).dropna().reset_index()
+            df.columns = ['Date', 'Raw']
+
+        df['Value'] = df['Raw'].pct_change(12) * 100
+        df = df.dropna().reset_index(drop=True)
+        df = df[df['Date'] >= start_date].reset_index(drop=True)
+
+        current_val = df['Value'].iloc[-1]
+        current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
+        is_danger = current_val < danger_threshold
+        return df, current_val, current_date, is_danger
+    except Exception:
+        return pd.DataFrame(), 0, "", False
+
+# 修正：銅金比門檻 (小於 0.0015 反紅底)
 @st.cache_data(ttl=3600)
 def get_copper_gold_ratio(danger_threshold=0.0015):
     try:
@@ -398,8 +422,10 @@ def draw_line_chart(title, df, is_danger, current_val=0, current_date=""):
         title_text = f"{title} [{current_date}: {current_val:,.4f}]"
     elif "維持率" in title or "指標" in title or "年增率" in title or "波動率" in title or "變動率" in title:
         title_text = f"{title} [{current_date}: {current_val:,.2f}%]"
-    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title or "初領失業救濟金" in title or "貼現窗口借款" in title:
-        title_text = f"{title} [{current_date}: {current_val:,.0f} 百萬美元]" if "貼現窗口借款" in title else f"{title} [{current_date}: {current_val:,.0f}]"
+    elif "貼現窗口借款" in title:
+        title_text = f"{title} [{current_date}: {current_val:,.0f} 百萬美元]"
+    elif "外資台指期貨淨未平倉" in title or "散戶小台淨未平倉" in title or "初領失業救濟金" in title:
+        title_text = f"{title} [{current_date}: {current_val:,.0f}]"
     else:
         title_text = f"{title} [{current_date}: {current_val:,.2f}]"
 
@@ -594,9 +620,9 @@ with tab_home:
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    discbwk_data = get_fred_data("DISCBWK", 25000, True, api_key)  # 修正：由 WPCREDIT 改為 DISCBWK (貼現窗口借款總額)
+    dpcredit_data = get_fred_data("DPCREDIT", 25000, True, api_key)  # 修正：FRED 正確代碼 DPCREDIT
     walcl_data = get_walcl_change_data(3.0, api_key)
-    rrp_data = get_fred_data("RRPONTSYD", 50, False, api_key)
+    totresns_data = get_totresns_yoy_data(-5.0, api_key)  # 修正：取代過期的隔夜逆回購，監控商業銀行準備金年增率
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
 
     # 抓取 中長期指標 (美國)
@@ -626,7 +652,7 @@ with tab_home:
     # 統計全部觸發危險的指標數量 (共 22 項)
     danger_total = sum([
         stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3],
-        discbwk_data[3], walcl_data[3], rrp_data[3], icsa_data[3],
+        dpcredit_data[3], walcl_data[3], totresns_data[3], icsa_data[3],
         t10y2y_data[3], t10y3m_data[3], nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3],
         twd_data[3], tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger,
         tw_hv_data[3], tw_future_oi_data[3], tw_retail_oi_data[3]
@@ -671,7 +697,7 @@ with tab_home:
         st.plotly_chart(draw_line_chart("金融商業本票利率 (DCPF3M)", dcpf3m_data[0], dcpf3m_data[3], dcpf3m_data[1], dcpf3m_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控企業短期無擔保融資成本。<br>**判斷方式：** 利率高檔攀升代表企業借貸成本增加。<br>**危機標準：** 利率絕對值突破 5.5% 反映融資壓力高漲。", unsafe_allow_html=True)
     with col6:
-        st.plotly_chart(draw_line_chart("貼現窗口借款 (DISCBWK)", discbwk_data[0], discbwk_data[3], discbwk_data[1], discbwk_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.plotly_chart(draw_line_chart("貼現窗口借款 (DPCREDIT)", dpcredit_data[0], dpcredit_data[3], dpcredit_data[1], dpcredit_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監控銀行體系應對緊急流動性缺口之需求。<br>**判斷方式：** 正常情況下借款金額趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映金融機構出現極端流動性危機。", unsafe_allow_html=True)
 
     st.write("---")
@@ -681,8 +707,8 @@ with tab_home:
         st.plotly_chart(draw_line_chart("聯準會總資產近月變動率 (WALCL)", walcl_data[0], walcl_data[3], walcl_data[1], walcl_data[2]), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 監測聯準會是否進行緊急擴表注水。<br>**判斷方式：** 資產規模短期內急遽膨脹代表市場發生系統性風險。<br>**危機標準：** 近 4 週資產規模變動率突破 +3.0%。", unsafe_allow_html=True)
     with col8:
-        st.plotly_chart(draw_line_chart("隔夜逆回購餘額 (RRPONTSYD)", rrp_data[0], rrp_data[3], rrp_data[1], rrp_data[2]), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 監測金融體系的過剩流動性。<br>**判斷方式：** 持續下滑代表多餘資金被消耗。<br>**危機標準：** 餘額跌破 500 億美元，代表過剩資金池已耗盡，後續縮表將直接抽離銀行準備金。", unsafe_allow_html=True)
+        st.plotly_chart(draw_line_chart("商業銀行準備金年增率 (TOTRESNS)", totresns_data[0], totresns_data[3], totresns_data[1], totresns_data[2]), use_container_width=True, config={'staticPlot': True})
+        st.markdown("**監控用意：** 監測美國銀行體系的基礎流動性池變化。<br>**判斷方式：** 準備金年增率大幅下滑代表金融體系資金遭持續抽離。<br>**危機標準：** 年增率跌破 -5.0%，反映銀行體系流動性水位降至警戒區。", unsafe_allow_html=True)
 
     st.write("---")
 
