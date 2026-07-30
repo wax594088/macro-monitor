@@ -494,32 +494,31 @@ def draw_four_color_gauge(danger_count, total_count):
         number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
             'shape': "angular",
-            'padding': 0,  # 移除儀表內部留白，讓色塊覆蓋最大化
             'axis': {
                 'range': [0, total_count], 
-                'showticklabels': False,  # 隱藏外圍數字刻度
-                'ticks': ''               # 隱藏刻度小線條
+                'showticklabels': False,  # 移除外圍數字刻度
+                'ticks': ''               # 移除刻度小標記
             },
             'bar': {
                 'color': bar_color, 
-                'thickness': 1.0,         # 當前數值條覆蓋整個弧形寬度
+                'thickness': 1.0,         # 指針/當前數值條覆蓋滿版
                 'line': border_style
             },
             'bgcolor': "#e0e0e0",
             'borderwidth': 0,
             'steps': [
-                # 將背景四色區塊厚度 (thickness) 設定為 1.0，達成整體色塊加寬效果
-                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style, 'thickness': 1.0},
-                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style, 'thickness': 1.0},
-                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style, 'thickness': 1.0},
-                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style, 'thickness': 1.0}
+                # 移除 steps 內的 thickness 避免 ValueError
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
             ]
         }
     ))
 
     fig.update_layout(
         height=180,
-        margin=dict(l=10, r=10, t=10, b=10), # 縮減容器外圍邊距，放大弧形色塊視覺比例
+        margin=dict(l=10, r=10, t=10, b=10), # 透過邊距緊湊化讓視覺上的弧形色塊更大
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
