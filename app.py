@@ -1,7 +1,6 @@
 import io
 import datetime
 import requests
-import math
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -466,62 +465,53 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：精確計算圓心 (x=0.5, y=0.15) 與箭頭尖端法線角度，實現箭頭貼齊弧軌外緣並指向中心
+# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
-        step1, step2, step3 = 0.5, 1.5, 3.5
+        step1 = 0.5
+        step2 = 1.5
+        step3 = 3.5
     else:
-        step1, step2, step3 = 4.0, 8.0, 12.0
+        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
+        step1 = 4.0
+        step2 = 8.0
+        step3 = 12.0
+
+    if danger_count <= step1:
+        bar_color = "#2ecc71"
+    elif danger_count <= step2:
+        bar_color = "#f1c40f"
+    elif danger_count <= step3:
+        bar_color = "#e67e22"
+    else:
+        bar_color = "#e74c3c"
 
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 22}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
             'axis': {
                 'range': [0, total_count], 
-                'showticklabels': False, 
-                'ticks': ''
+                'tickwidth': 1, 
+                'tickcolor': "#bdc3c7", 
+                'tickfont': {'size': 12},
+                'dtick': 1 if total_count == 6 else 2
             },
-            'bar': {'color': 'rgba(0,0,0,0)'},
+            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
             'bordercolor': "#bdc3c7",
             'steps': [
-                {'range': [0, step1], 'color': '#2ecc71' if danger_count >= 0 else '#d4efdf', 'line': border_style},
-                {'range': [step1, step2], 'color': '#f1c40f' if danger_count > step1 else '#fcf3cf', 'line': border_style},
-                {'range': [step2, step3], 'color': '#e67e22' if danger_count > step2 else '#fbeee6', 'line': border_style},
-                {'range': [step3, total_count], 'color': '#e74c3c' if danger_count > step3 else '#fadbd8', 'line': border_style}
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
             ]
         }
     ))
-
-    # 1. 極座標精確計算
-    ratio = min(max(danger_count / total_count, 0.0), 1.0)
-    theta_rad = math.pi * (1.0 - ratio) # 180° ~ 0°
-    
-    # 2. Plotly 儀表軸心與半徑對齊 (中心原點 x=0.5, y=0.15, 外緣半徑 r=0.42)
-    center_x, center_y = 0.5, 0.15
-    radius = 0.42
-    
-    arrow_x = center_x + radius * math.cos(theta_rad)
-    arrow_y = center_y + radius * math.sin(theta_rad)
-
-    # 3. 箭頭旋轉角（▲預設朝上 90°，欲使其指向圓心，旋轉角為 (theta - 90°)）
-    text_angle = math.degrees(theta_rad) - 90.0
-
-    fig.add_annotation(
-        x=arrow_x,
-        y=arrow_y,
-        xref="paper",
-        yref="paper",
-        text="▲",
-        showarrow=False,
-        font=dict(size=22, color="#e67e22"), # 高顯眼橘黃色箭頭
-        textangle=text_angle
-    )
 
     fig.update_layout(
         height=180,
