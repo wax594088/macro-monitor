@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 原生選單與工具列（保留標籤頁與頁面內容）
+# 隱藏右上角 Streamlit 原生選單與工具列
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -35,7 +35,7 @@ finmind_token = st.secrets.get("FINMIND_TOKEN", "")
 end_date = datetime.datetime.now()
 start_date = end_date - pd.DateOffset(years=5)
 
-# ================= 資料抓取模組 (美國) =================
+# ================= 資料抓取模組 (通用與美股) =================
 
 @st.cache_data(ttl=3600)
 def get_fred_data(series_id, danger_threshold, is_greater_danger=True, key=None):
@@ -57,7 +57,43 @@ def get_fred_data(series_id, danger_threshold, is_greater_danger=True, key=None)
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 製造業新訂單總額 (計算 YoY 年增率，跌破 0% 反紅底)
+# 殖利率曲線動態轉折檢測 (判讀：過去6個月曾倒掛，且近1個月內急速向上爬升超過0.5%)
+@st.cache_data(ttl=3600)
+def get_yield_curve_steepening_data(series_id, key=None):
+    try:
+        if key:
+            fred = Fred(api_key=key)
+            data = fred.get_series(series_id, observation_start=start_date - pd.DateOffset(months=7), observation_end=end_date)
+            df = pd.DataFrame(data, columns=['Value']).dropna().reset_index()
+            df.columns = ['Date', 'Value']
+        else:
+            df = web.DataReader(series_id, 'fred', start_date - pd.DateOffset(months=7), end_date).dropna().reset_index()
+            df.columns = ['Date', 'Value']
+
+        df['Date'] = pd.to_datetime(df['Date'])
+        df = df.sort_values('Date').reset_index(drop=True)
+        
+        current_val = df['Value'].iloc[-1]
+        current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
+        
+        # 動態轉折判定邏輯
+        six_months_ago = df['Date'].iloc[-1] - pd.DateOffset(months=6)
+        one_month_ago = df['Date'].iloc[-1] - pd.DateOffset(months=1)
+        
+        df_6m = df[df['Date'] >= six_months_ago]
+        had_inversion = (df_6m['Value'] < 0.0).any()
+        
+        val_1m_ago = df[df['Date'] <= one_month_ago]['Value'].iloc[-1] if not df[df['Date'] <= one_month_ago].empty else current_val
+        steepening = (current_val - val_1m_ago) > 0.5
+        
+        is_danger = had_inversion and steepening and (current_val > 0.0)
+        
+        df_display = df[df['Date'] >= start_date].reset_index(drop=True)
+        return df_display, current_val, current_date, is_danger
+    except Exception:
+        return pd.DataFrame(), 0, "", False
+
+# 製造業新訂單總額 (計算 YoY 年增率)
 @st.cache_data(ttl=3600)
 def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
     try:
@@ -81,7 +117,7 @@ def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 聯準會總資產 (計算 4 週變動率 %，突破 3% 反紅底)
+# 聯準會總資產 (計算 4 週變動率 %)
 @st.cache_data(ttl=3600)
 def get_walcl_change_data(danger_threshold=3.0, key=None):
     try:
@@ -105,7 +141,7 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 商業銀行準備金佔聯準會總資產比例 (%) (TOTRESNS / WALCL * 100，低於 10.0% 反紅底)
+# 商業銀行準備金佔聯準會總資產比例 (%)
 @st.cache_data(ttl=3600)
 def get_reserve_ratio_data(danger_threshold=10.0, key=None):
     try:
@@ -157,7 +193,7 @@ def get_copper_gold_ratio():
 # ================= 資料抓取模組 (台灣) =================
 
 @st.cache_data(ttl=3600)
-def get_taiwan_historical_volatility(danger_threshold=25.0, is_greater_danger=True):
+def get_taiwan_historical_volatility(danger_threshold=30.0, is_greater_danger=True):
     try:
         df = yf.Ticker("^TWII").history(start=start_date, end=end_date)
         if not df.empty:
@@ -336,7 +372,7 @@ def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
             elif current_val < breakdown_threshold:
                 status = "breakdown"
 
-            is_danger = (status == "breakdown")  # 僅破位時計入頂部危機總數
+            is_danger = (status == "breakdown")
             return df, current_val, current_date, status, is_danger
     except Exception:
         pass
@@ -470,13 +506,13 @@ def draw_bias_chart(df, status):
         return fig
 
     if status == "breakdown":
-        bg_color = 'rgba(255, 235, 235, 1)'   # 淡紅底 (破位)
+        bg_color = 'rgba(255, 235, 235, 1)'
         line_color = 'red'
     elif status == "overheat":
-        bg_color = 'rgba(255, 235, 200, 1)'   # 淡橘底 (過熱)
+        bg_color = 'rgba(255, 235, 200, 1)'
         line_color = '#e67e22'
     else:
-        bg_color = 'rgba(255, 255, 255, 1)'   # 白底 (正常)
+        bg_color = 'rgba(255, 255, 255, 1)'
         line_color = '#1f77b4'
 
     fig = go.Figure(data=go.Scatter(x=df['Date'], y=df['Value'], line=dict(color=line_color, width=2)))
@@ -558,60 +594,68 @@ def draw_m1b_m2_chart(df, is_danger):
 
     return fig
 
-def get_stage_info(danger_count):
-    if 0 <= danger_count <= 4:
-        return "#1e824c", "正常"
-    elif 5 <= danger_count <= 8:
-        return "#2ecc71", "注意"
-    elif 9 <= danger_count <= 14:
-        return "#f1c40f", "警戒"
-    elif 15 <= danger_count <= 18:
-        return "#e67e22", "危險"
-    else:
-        return "#e74c3c", "恐慌"
-
-def draw_bar_gauge(danger_count, total_count=22):
+# 雙軌制儀表板繪製
+def draw_dual_gauge(core_danger_count, core_total, aux_danger_count, aux_total):
     fig = go.Figure()
 
-    sections = [
-        {"range": [0, 4], "color": "#1e824c", "label": "正常"},
-        {"range": [4, 8], "color": "#2ecc71", "label": "注意"},
-        {"range": [8, 14], "color": "#f1c40f", "label": "警戒"},
-        {"range": [14, 18], "color": "#e67e22", "label": "危險"},
-        {"range": [18, 22], "color": "#e74c3c", "label": "恐慌"}
-    ]
+    # 核心指標軌 (上方)
+    core_ratio = core_danger_count / core_total if core_total > 0 else 0
+    core_color = "#e74c3c" if core_danger_count > 0 else "#1e824c"
+    core_label = f"系統性流動性危機 (一票否決): {core_danger_count} / {core_total} 項"
 
-    for sec in sections:
-        width = sec["range"][1] - sec["range"][0]
-        fig.add_trace(go.Bar(
-            x=[width],
-            y=["狀態"],
-            base=[sec["range"][0]],
-            orientation='h',
-            marker=dict(color=sec["color"]),
-            text=f"<b>{sec['label']}</b>",
-            textposition='inside',
-            insidetextanchor='middle',
-            textfont=dict(size=18, color="white"),
-            hoverinfo='none',
-            showlegend=False
-        ))
+    fig.add_trace(go.Bar(
+        x=[100],
+        y=["流動性與信用核心"],
+        orientation='h',
+        marker=dict(color="#ecf0f1"),
+        hoverinfo='none',
+        showlegend=False
+    ))
+    fig.add_trace(go.Bar(
+        x=[core_ratio * 100],
+        y=["流動性與信用核心"],
+        orientation='h',
+        marker=dict(color=core_color),
+        text=f"<b>{core_label}</b>",
+        textposition='inside',
+        insidetextanchor='left',
+        textfont=dict(size=14, color="white"),
+        hoverinfo='none',
+        showlegend=False
+    ))
 
-    fig.add_annotation(
-        x=danger_count,
-        y="狀態",
-        text="▼",
-        showarrow=False,
-        yshift=48,
-        font=dict(size=36, color="#2c3e50")
-    )
+    # 輔助指標軌 (下方)
+    aux_ratio = aux_danger_count / aux_total if aux_total > 0 else 0
+    aux_color = "#f1c40f" if aux_danger_count > 4 else "#2ecc71"
+    aux_label = f"景氣與籌碼變化: {aux_danger_count} / {aux_total} 項"
+
+    fig.add_trace(go.Bar(
+        x=[100],
+        y=["景氣與籌碼輔助"],
+        orientation='h',
+        marker=dict(color="#ecf0f1"),
+        hoverinfo='none',
+        showlegend=False
+    ))
+    fig.add_trace(go.Bar(
+        x=[aux_ratio * 100],
+        y=["景氣與籌碼輔助"],
+        orientation='h',
+        marker=dict(color=aux_color),
+        text=f"<b>{aux_label}</b>",
+        textposition='inside',
+        insidetextanchor='left',
+        textfont=dict(size=14, color="white"),
+        hoverinfo='none',
+        showlegend=False
+    ))
 
     fig.update_layout(
-        barmode='stack',
-        xaxis=dict(range=[0, total_count], showgrid=False, zeroline=False, visible=False, fixedrange=True),
-        yaxis=dict(showgrid=False, visible=False, fixedrange=True),
-        height=180,
-        margin=dict(l=15, r=15, t=40, b=10),
+        barmode='overlay',
+        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, visible=False, fixedrange=True),
+        yaxis=dict(showgrid=False, tickfont=dict(size=14, color="#2c3e50"), fixedrange=True),
+        height=140,
+        margin=dict(l=120, r=15, t=10, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -630,7 +674,6 @@ def format_metric_value(title, val):
     else:
         return f"{val:,.2f}"
 
-# 方法三：使用 Streamlit 渲染 Metric 與圖表之 Helper Function
 def render_metric_and_chart(title, data_tuple):
     df, current_val, current_date, is_danger = data_tuple
     val_str = format_metric_value(title, current_val)
@@ -643,64 +686,66 @@ tab_home, tab_analysis = st.tabs(["首頁", "產業鏈分析"])
 
 with tab_home:
 
-    # 抓取 短期指標 (美國)
+    # 1. 抓取 核心流動性與信用危機指標 (6 項)
     stlfsi_data = get_fred_data("STLFSI4", 2.0, True, api_key)
     vix_data = get_fred_data("VIXCLS", 30.0, True, api_key)
     hy_oas_data = get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
     baa_data = get_fred_data("BAA10Y", 3.0, True, api_key)
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
-    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)  # 修正：代碼由 DPCREDIT 改為 WPC
+    dpcredit_data = get_fred_data("WPC", 25000, True, api_key)
+
+    # 2. 抓取 輔助景氣與籌碼指標 (16 項)
     walcl_data = get_walcl_change_data(3.0, api_key)
     totresns_data = get_reserve_ratio_data(10.0, api_key)
     icsa_data = get_fred_data("ICSA", 260000, True, api_key)
-
-    # 抓取 中長期指標 (美國)
-    t10y2y_data = get_fred_data("T10Y2Y", 0.0, False, api_key)
-    t10y3m_data = get_fred_data("T10Y3M", 0.0, False, api_key)
+    t10y2y_data = get_yield_curve_steepening_data("T10Y2Y", api_key)
+    t10y3m_data = get_yield_curve_steepening_data("T10Y3M", api_key)
     nosrdisa_data = get_amtmno_yoy_data(0.0, api_key)
     sahm_data = get_fred_data("SAHMREALTIME", 0.5, True, api_key)
     cfnai_data = get_fred_data("CFNAI", -0.7, False, api_key)
     cg_ratio_data = get_copper_gold_ratio()
 
-    # 抓取 台灣指標
     twd_data = get_usdtwd_data(33.0, True)
-    tw_hv_data = get_taiwan_historical_volatility(25.0, True)
+    tw_hv_data = get_taiwan_historical_volatility(30.0, True)
     tw_export_data = get_taiwan_electronics_export_data(0.0)
     tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
-
-    # 抓取 大盤月線乖離率 (%)
     tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -5.0)
 
-    # 呼叫 FinMind 期貨籌碼接口
     tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
     tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_date, tw_retail_oi_danger = get_tw_futures_chip(finmind_token)
 
     tw_future_oi_data = (tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger)
     tw_retail_oi_data = (tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_date, tw_retail_oi_danger)
 
-    # 統計全部觸發危險的指標數量 (共 22 項)
-    danger_total = sum([
-        stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3],
-        dpcredit_data[3], walcl_data[3], totresns_data[3], icsa_data[3],
-        t10y2y_data[3], t10y3m_data[3], nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3],
-        twd_data[3], tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger,
-        tw_hv_data[3], tw_future_oi_data[3], tw_retail_oi_data[3]
+    # 統計觸發數量
+    core_danger_total = sum([
+        stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3], dpcredit_data[3]
     ])
 
-    _, stage_text = get_stage_info(danger_total)
+    aux_danger_total = sum([
+        walcl_data[3], totresns_data[3], icsa_data[3], t10y2y_data[3], t10y3m_data[3],
+        nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3], twd_data[3],
+        tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger, tw_hv_data[3],
+        tw_future_oi_data[3], tw_retail_oi_data[3]
+    ])
 
+    # 雙軌儀表板
     st.plotly_chart(
-        draw_bar_gauge(danger_total, 22), 
+        draw_dual_gauge(core_danger_total, 6, aux_danger_total, 16), 
         use_container_width=True, 
         config={'staticPlot': True}
     )
     
-    st.markdown(f"<h4 style='text-align: center; color: gray;'>數據監控儀表板：{stage_text} ({danger_total} / 22 項)</h4>", unsafe_allow_html=True)
+    if core_danger_total > 0:
+        st.error("⚠️ 警告：金融體系爆發流動性與信用緊縮風險（核心指標觸發）！")
+    else:
+        st.success("✅ 全球金融體系流動性與信用狀況正常")
+
     st.divider()
 
-    st.markdown("### 美國經濟指標")
-    st.subheader("短期指標 (流動性與壓力)")
-
+    # 第一層：全球流動性與信用風險 (美國核心)
+    st.markdown("### 第一層：全球流動性與信用風險 (美國核心)")
+    
     col1, col2 = st.columns(2)
     with col1:
         render_metric_and_chart("金融壓力指數 (STLFSI4)", stlfsi_data)
@@ -729,35 +774,37 @@ with tab_home:
         render_metric_and_chart("貼現窗口借款 (DPCREDIT)", dpcredit_data)
         st.markdown("**監控用意：** 監控銀行體系應對緊急流動性缺口之需求。<br>**判斷方式：** 正常情況下借款金額趨近於零。<br>**危機標準：** 借款規模突破 25,000 百萬美元，反映金融機構出現極端流動性危機。", unsafe_allow_html=True)
 
+    st.divider()
+
+    # 第二層：台灣基本面與資金流向 (台股防禦)
+    st.markdown("### 第二層：台灣基本面與資金流向")
+
+    tw_fund1, tw_fund2 = st.columns(2)
+    with tw_fund1:
+        render_metric_and_chart("財政部電子零組件出口年增率", tw_export_data)
+        st.markdown("**監控用意：** 預判台股半導體與科技業基本面轉折。<br>**判斷方式：** 趨勢領先台股科技企業營收約 1 至 2 個月。<br>**危機標準：** 年增率高檔轉折反轉，或跌破 0.0% 進入產業收縮期。", unsafe_allow_html=True)
+    with tw_fund2:
+        render_metric_and_chart("美元兌新台幣匯率 (USD/TWD)", twd_data)
+        st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並突破關鍵整數防線（33.0）。", unsafe_allow_html=True)
+
     st.write("---")
 
-    col7, col8 = st.columns(2)
-    with col7:
-        render_metric_and_chart("聯準會總資產近月變動率 (WALCL)", walcl_data)
-        st.markdown("**監控用意：** 監測聯準會是否進行緊急擴表注水或持續縮表。<br>**判斷方式：** 變動率急升代表央行介入救市，通常伴隨系統性風險發生。<br>**危機標準：** 近 4 週資產規模變動率突破 +3.0%。", unsafe_allow_html=True)
-    with col8:
-        render_metric_and_chart("商業銀行準備金佔總資產比 (TOTRESNS/WALCL)", totresns_data)
-        st.markdown("**監控用意：** 監測美國銀行體系的基礎流動性充裕程度。<br>**判斷方式：** 準備金占美聯儲資產比例下滑代表金融體系流動性抽離。<br>**危機標準：** 比率跌破 10.0%，反映銀行體系流動性水位降至緊縮警戒區。", unsafe_allow_html=True)
-
-    st.write("---")
-
-    col9, col10 = st.columns(2)
-    with col9:
-        render_metric_and_chart("初領失業救濟金 (ICSA)", icsa_data)
-        st.markdown("**監控用意：** 監控勞動力市場短期動能與裁員狀況。<br>**判斷方式：** 趨勢持續向上代表企業加速裁員。<br>**危機標準：** 數值連續數週突破 26 萬人，反映就業市場明顯惡化。", unsafe_allow_html=True)
-    with col10:
-        st.write("")
+    st.metric(label="台灣-M1B vs. M2 (剪刀差)", value=f"{tw_m1b_m2_diff:,.2f}%", delta=f"更新日期: {tw_m1b_m2_date}", delta_color="off")
+    st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger), use_container_width=True, config={'staticPlot': True})
+    st.markdown("**監控用意：** 衡量國內股市資金動態與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
 
     st.divider()
-    st.subheader("中長期指標 (經濟活動與衰退預警)")
+
+    # 第三層：美總體景氣與衰退預警 (中長期觀察)
+    st.markdown("### 第三層：美總體景氣與衰退預警 (中長期觀察)")
 
     col11, col12 = st.columns(2)
     with col11:
         render_metric_and_chart("10年減2年期利差 (T10Y2Y)", t10y2y_data)
-        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 倒掛為前兆，倒掛後因降息預期導致利差快速拉回轉正（降息型陡峭化）為衰退主升段。<br>**危機標準：** 深度倒掛後，利差於短時間內快速突破 0% 轉正。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 評估中長期經濟衰退風險與殖利率曲線型態。<br>**判斷方式：** 過去半年間曾倒掛，且近 1 個月急劇向上陡峭化轉正。<br>**危機標準：** 深度倒掛後急速拉升轉正（反映衰退降臨與降息循環啟動）。", unsafe_allow_html=True)
     with col12:
         render_metric_and_chart("10年減3個月期利差 (T10Y3M)", t10y3m_data)
-        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 觀察短期資金成本與長端景氣預期的落差及轉折。<br>**危機標準：** 結束倒掛並急促拉升轉正（反映衰退降臨與降息循環啟動）。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 聯準會最看重的衰退預警指標。<br>**判斷方式：** 過去半年間曾倒掛，且近 1 個月急劇向上陡峭化轉正。<br>**危機標準：** 深度倒掛後急速拉升轉正。", unsafe_allow_html=True)
 
     st.write("---")
 
@@ -779,37 +826,34 @@ with tab_home:
         render_metric_and_chart("銅金比 (含200SMA)", cg_ratio_data)
         st.markdown("**監控用意：** 衡量市場風險偏好與景氣擴張力道。<br>**判斷方式：** 當前數值低於 200 日均線（SMA）代表實體需求弱化且避險情緒升溫。<br>**危機標準：** 銅金比跌破 200 日均線趨勢向下。", unsafe_allow_html=True)
 
-    st.divider()
-    st.subheader("台灣經濟及股市指標")
+    st.write("---")
 
-    st.markdown("#### 基本面")
-    tw_basic1, tw_basic2 = st.columns(2)
-    with tw_basic1:
-        render_metric_and_chart("財政部電子零組件出口年增率", tw_export_data)
-        st.markdown("**監控用意：** 預判台股半導體與科技業基本面轉折。<br>**判斷方式：** 趨勢領先台股科技企業營收約 1 至 2 個月。<br>**危機標準：** 年增率高檔轉折反轉，或跌破 0.0% 進入產業收縮期。", unsafe_allow_html=True)
-    with tw_basic2:
+    col17, col18 = st.columns(2)
+    with col17:
+        render_metric_and_chart("聯準會總資產近月變動率 (WALCL)", walcl_data)
+        st.markdown("**監控用意：** 監測聯準會資產負債表擴張狀態。<br>**判斷方式：** 變動率急升代表央行介入救市或發生流動性危機的同步確認訊號。<br>**危機標準：** 近 4 週資產規模變動率突破 +3.0%。", unsafe_allow_html=True)
+    with col18:
+        render_metric_and_chart("商業銀行準備金佔總資產比 (TOTRESNS/WALCL)", totresns_data)
+        st.markdown("**監控用意：** 監測美國銀行體系的基礎流動性充裕程度。<br>**判斷方式：** 準備金占美聯儲資產比例下滑代表金融體系流動性抽離。<br>**危機標準：** 比率跌破 10.0%，反映銀行體系流動性水位降至緊縮警戒區。", unsafe_allow_html=True)
+
+    st.write("---")
+
+    col19, col20 = st.columns(2)
+    with col19:
+        render_metric_and_chart("初領失業救濟金 (ICSA)", icsa_data)
+        st.markdown("**監控用意：** 監控勞動力市場短期動能與裁員狀況。<br>**判斷方式：** 趨勢持續向上代表企業加速裁員。<br>**危機標準：** 數值連續數週突破 26 萬人，反映就業市場明顯惡化。", unsafe_allow_html=True)
+    with col20:
         st.write("")
 
-    st.write("---")
+    st.divider()
 
-    st.markdown("#### 資金面")
-    tw_fund1, tw_fund2 = st.columns(2)
-    with tw_fund1:
-        render_metric_and_chart("美元兌新台幣匯率 (USD/TWD)", twd_data)
-        st.markdown("**監控用意：** 監控外資資金進出台股動向與匯率風險。<br>**判斷方式：** 台幣貶值通常伴隨外資賣超台股。<br>**危機標準：** 台幣短時間內急速貶值並突破關鍵整數防線（33.0）。", unsafe_allow_html=True)
-    with tw_fund2:
-        st.metric(label="台灣-M1B vs. M2 (剪刀差)", value=f"{tw_m1b_m2_diff:,.2f}%", delta=f"更新日期: {tw_m1b_m2_date}", delta_color="off")
-        st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger), use_container_width=True, config={'staticPlot': True})
-        st.markdown("**監控用意：** 衡量國內股市資金動態與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
+    # 第四層：台股短線籌碼與技術面 (同步與落後指標)
+    st.markdown("### 第四層：台股短線籌碼與技術面 (同步與落後指標)")
 
-    st.write("---")
-
-    st.markdown("#### 籌碼面")
-    
     tw_chip1, tw_chip2 = st.columns(2)
     with tw_chip1:
         render_metric_and_chart("台指期歷史波動率 (20日HV)", tw_hv_data)
-        st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 25.0% 進入高風險狀態。", unsafe_allow_html=True)
+        st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 30.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
         st.metric(label="大盤乖離冷熱指標", value=f"{tw_bias_val:,.2f}%", delta=f"更新日期: {tw_bias_date}", delta_color="off")
         st.plotly_chart(draw_bias_chart(tw_bias_df, tw_bias_status), use_container_width=True, config={'staticPlot': True})
