@@ -485,11 +485,17 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    # 計算各區段數值
-    v1 = step1
-    v2 = step2 - step1
-    v3 = step3 - step2
-    v4 = total_count - step3
+    # 計算四區間的角度範圍 (半圓 180 度)
+    w1 = (step1 / total_count) * 180
+    w2 = ((step2 - step1) / total_count) * 180
+    w3 = ((step3 - step2) / total_count) * 180
+    w4 = ((total_count - step3) / total_count) * 180
+
+    # 計算各區段起始角度 (順時針配置：180 度到 0 度)
+    a1 = 180 - w1
+    a2 = a1 - w2
+    a3 = a2 - w3
+    a4 = 0
 
     colors = ['#d4efdf', '#fcf3cf', '#fbeee6', '#fadbd8']
     if danger_count <= step1:
@@ -501,53 +507,51 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         colors[3] = bar_color
 
-    # 設定半圓弧外徑與內徑（內徑設為 45，可顯著加寬弧帶）
-    r_out = 90
-    r_in = 45
-    cx, cy = 100, 100
-
-    def get_arc_path(start_val, end_val):
-        a1 = np.pi - (start_val / total_count) * np.pi
-        a2 = np.pi - (end_val / total_count) * np.pi
-        
-        x1_out, y1_out = cx + r_out * np.cos(a1), cy - r_out * np.sin(a1)
-        x2_out, y2_out = cx + r_out * np.cos(a2), cy - r_out * np.sin(a2)
-        x1_in, y1_in = cx + r_in * np.cos(a2), cy - r_in * np.sin(a2)
-        x2_in, y2_in = cx + r_in * np.cos(a1), cy - r_in * np.sin(a1)
-        
-        return f"M {x1_out} {y1_out} A {r_out} {r_out} 0 0 1 {x2_out} {y2_out} L {x1_in} {y1_in} A {r_in} {r_in} 0 0 0 {x2_in} {y2_in} Z"
-
     fig = go.Figure()
 
-    # 繪製四段弧形色塊
-    steps_val = [0, step1, step2, step3, total_count]
-    for i in range(4):
-        path = get_arc_path(steps_val[i], steps_val[i+1])
-        fig.add_shape(
-            type="path",
-            path=path,
-            fillcolor=colors[i],
-            line=dict(color="#bdc3c7", width=1.5)
-        )
+    # 繪製四色背景區塊 (r 控制外徑，base 控制內徑，差值即為色塊寬度)
+    widths = [w1, w2, w3, w4]
+    angles = [a1, a2, a3, a4]
 
-    # 繪製中心文字
+    for i in range(4):
+        fig.add_trace(go.Barpolar(
+            r=[50],                   # 外半徑長度
+            base=20,                  # 內半徑起點 (調小會讓色塊向內圈延伸變厚)
+            theta=[angles[i]],        # 起始角度
+            width=[widths[i]],        # 扇形角度寬度
+            marker_color=colors[i],
+            marker_line_color="#bdc3c7",
+            marker_line_width=1.5,
+            hoverinfo='none'
+        ))
+
+    # 中央顯示數據文字
     fig.add_annotation(
         text=f"<b>{danger_count} / {total_count}</b>",
-        x=0.5, y=0.15,
+        x=0.5, y=0.2,
+        xref="paper", yref="paper",
         font=dict(size=22, color="#2c3e50"),
         showarrow=False
     )
 
     fig.update_layout(
-        height=140,
+        height=180,
         margin=dict(l=10, r=10, t=10, b=0),
-        xaxis=dict(range=[0, 200], visible=False, fixedrange=True),
-        yaxis=dict(range=[0, 110], visible=False, fixedrange=True),
+        showlegend=False,
+        polar=dict(
+            hole=0.3,
+            sector=[0, 180],           # 僅顯示上半圓
+            radialaxis=dict(visible=False), # 隱藏半徑刻度
+            angularaxis=dict(
+                visible=False,         # 隱藏角度與外圍數字
+                direction="counterclockwise"
+            )
+        ),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
     return fig
-
+    
 def draw_line_chart(title, df, is_danger):
     if df is None or df.empty:
         fig = go.Figure()
