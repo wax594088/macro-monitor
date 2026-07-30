@@ -723,7 +723,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險視覺儀表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.plotly_chart(draw_gauge_chart("核心流動性風險", core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
