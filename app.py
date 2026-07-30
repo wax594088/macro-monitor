@@ -17,12 +17,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 原生選單與工具列
+# 隱藏右上角 Streamlit 原生選單與工具列，並大幅縮減頂部內聚空白
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 1rem !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -461,6 +465,7 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
+# 修正：縮小高度並重新設定內距，避免手機直向堆疊時字體被壓住
 def draw_gauge_chart(title, danger_count, total_count):
     ratio = (danger_count / total_count) * 100 if total_count > 0 else 0
     
@@ -474,8 +479,8 @@ def draw_gauge_chart(title, danger_count, total_count):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
-        title = {'text': title, 'font': {'size': 14, 'color': '#34495e'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 18, 'color': '#2c3e50'}},
+        title = {'text': title, 'font': {'size': 13, 'color': '#34495e'}},
         gauge = {
             'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "gray"},
             'bar': {'color': bar_color},
@@ -489,8 +494,8 @@ def draw_gauge_chart(title, danger_count, total_count):
     ))
 
     fig.update_layout(
-        height=160,
-        margin=dict(l=20, r=20, t=30, b=10),
+        height=130,
+        margin=dict(l=15, r=15, t=25, b=0),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -654,7 +659,6 @@ def format_metric_value(title, val):
     else:
         return f"{val:,.2f}"
 
-# 渲染帶有升降箭頭與前一期數值的 Metric Helper Function
 def render_metric_and_chart(title, data_tuple):
     df, current_val, prev_val, current_date, is_danger = data_tuple
     val_str = format_metric_value(title, current_val)
