@@ -465,16 +465,26 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 隱藏外圈刻度與數字，改用高對比實體指針（亮橘紅 #ff4d4f）指向當前位置
+# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
         step1 = 0.5
         step2 = 1.5
         step3 = 3.5
     else:
+        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
         step1 = 4.0
         step2 = 8.0
         step3 = 12.0
+
+    if danger_count <= step1:
+        bar_color = "#2ecc71"
+    elif danger_count <= step2:
+        bar_color = "#f1c40f"
+    elif danger_count <= step3:
+        bar_color = "#e67e22"
+    else:
+        bar_color = "#e74c3c"
 
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
@@ -483,14 +493,14 @@ def draw_four_color_gauge(danger_count, total_count):
         value = danger_count,
         number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
-            # 隱藏外圈刻度線與數字標籤
             'axis': {
                 'range': [0, total_count], 
-                'showticklabels': False, 
-                'ticks': ''
+                'tickwidth': 1, 
+                'tickcolor': "#bdc3c7", 
+                'tickfont': {'size': 12},
+                'dtick': 1 if total_count == 6 else 2
             },
-            # 亮橘紅高對比指針 (日夜模式皆清晰顯眼)
-            'bar': {'color': '#ff4d4f', 'thickness': 0.8},
+            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
             'bordercolor': "#bdc3c7",
@@ -762,7 +772,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
+        st.markdown("#### 📊 風險視覺儀表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
