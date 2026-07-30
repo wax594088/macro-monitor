@@ -485,39 +485,64 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    border_style = {'color': '#bdc3c7', 'width': 1.5}
+    # 計算各區段數值
+    v1 = step1
+    v2 = step2 - step1
+    v3 = step3 - step2
+    v4 = total_count - step3
 
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 22}},
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        gauge = {
-            'axis': {
-                'range': [0, total_count], 
-                'showticklabels': False,  # 隱藏數字刻度
-                'ticks': ''               # 隱藏刻度小線條
-            },
-            'bar': {
-                'color': bar_color, 
-                'thickness': 0.85,        # 數值條覆蓋厚度
-                'line': border_style
-            },
-            'bgcolor': "#ffffff",
-            'borderwidth': 0,
-            'steps': [
-                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
-                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
-                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
-                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
-            ]
-        }
-    ))
+    colors = ['#d4efdf', '#fcf3cf', '#fbeee6', '#fadbd8']
+    if danger_count <= step1:
+        colors[0] = bar_color
+    elif danger_count <= step2:
+        colors[1] = bar_color
+    elif danger_count <= step3:
+        colors[2] = bar_color
+    else:
+        colors[3] = bar_color
 
-    # 透過調整 yaxis 與 margin，將下半部被壓縮的區域推擠出去，使弧形視覺寬度加倍
+    # 設定半圓弧外徑與內徑（內徑設為 45，可顯著加寬弧帶）
+    r_out = 90
+    r_in = 45
+    cx, cy = 100, 100
+
+    def get_arc_path(start_val, end_val):
+        a1 = np.pi - (start_val / total_count) * np.pi
+        a2 = np.pi - (end_val / total_count) * np.pi
+        
+        x1_out, y1_out = cx + r_out * np.cos(a1), cy - r_out * np.sin(a1)
+        x2_out, y2_out = cx + r_out * np.cos(a2), cy - r_out * np.sin(a2)
+        x1_in, y1_in = cx + r_in * np.cos(a2), cy - r_in * np.sin(a2)
+        x2_in, y2_in = cx + r_in * np.cos(a1), cy - r_in * np.sin(a1)
+        
+        return f"M {x1_out} {y1_out} A {r_out} {r_out} 0 0 1 {x2_out} {y2_out} L {x1_in} {y1_in} A {r_in} {r_in} 0 0 0 {x2_in} {y2_in} Z"
+
+    fig = go.Figure()
+
+    # 繪製四段弧形色塊
+    steps_val = [0, step1, step2, step3, total_count]
+    for i in range(4):
+        path = get_arc_path(steps_val[i], steps_val[i+1])
+        fig.add_shape(
+            type="path",
+            path=path,
+            fillcolor=colors[i],
+            line=dict(color="#bdc3c7", width=1.5)
+        )
+
+    # 繪製中心文字
+    fig.add_annotation(
+        text=f"<b>{danger_count} / {total_count}</b>",
+        x=0.5, y=0.15,
+        font=dict(size=22, color="#2c3e50"),
+        showarrow=False
+    )
+
     fig.update_layout(
         height=140,
         margin=dict(l=10, r=10, t=10, b=0),
+        xaxis=dict(range=[0, 200], visible=False, fixedrange=True),
+        yaxis=dict(range=[0, 110], visible=False, fixedrange=True),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
