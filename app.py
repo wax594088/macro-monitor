@@ -465,7 +465,7 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：加上儀表弧軌外框（borderwidth=1），並將文字改為深白兼顧的灰色，日夜模式皆清晰
+# 修正：字體動態調整以解決白天過淡問題，各色塊補齊實體邊框
 def draw_four_color_gauge(danger_count, total_count):
     step1 = total_count * 0.25
     step2 = total_count * 0.50
@@ -480,21 +480,24 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
+    # 色塊邊框設定
+    border_style = {'color': '#555555', 'width': 1}
+
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': 'gray'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
         gauge = {
-            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "gray", 'tickfont': {'color': 'gray'}},
-            'bar': {'color': bar_color, 'thickness': 1.0},
+            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#555555", 'tickfont': {'color': '#2c3e50', 'size': 12}},
+            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
             'borderwidth': 1,
-            'bordercolor': "#7f8c8d",
+            'bordercolor': "#555555",
             'steps': [
-                {'range': [0, step1], 'color': '#d4efdf'},
-                {'range': [step1, step2], 'color': '#fcf3cf'},
-                {'range': [step2, step3], 'color': '#fbeee6'},
-                {'range': [step3, total_count], 'color': '#fadbd8'}
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
             ]
         }
     ))
@@ -758,7 +761,6 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        # 左側依要求：不加外層容器框，直接顯示儀表圖與內部小邊框
         st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
@@ -769,7 +771,6 @@ with tab_home:
             st.plotly_chart(draw_four_color_gauge(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
 
     with summary_col:
-        # 右側依要求：保留外框容器
         with st.container(border=True):
             st.markdown("#### 🚨 即時警戒摘要清單")
             
