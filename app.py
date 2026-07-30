@@ -488,10 +488,9 @@ def draw_four_color_gauge(danger_count, total_count):
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
+        mode = "gauge",  # 改為純 gauge 模式，避免內建數字排版壓縮到弧形區域
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
-        domain = {'x': [0, 1], 'y': [-0.2, 1]},  # y 軸向下拉伸，強迫半圓色塊實質加寬加厚
+        domain = {'x': [0, 1], 'y': [0.15, 1]},  # 合法的 0~1 範圍，將弧形稍微向上抬升
         gauge = {
             'shape': "angular",
             'axis': {
@@ -501,7 +500,7 @@ def draw_four_color_gauge(danger_count, total_count):
             },
             'bar': {
                 'color': bar_color, 
-                'thickness': 0.95,        # 數值條覆蓋厚度近乎滿版
+                'thickness': 1.0,         # 數值條滿版覆蓋
                 'line': border_style
             },
             'bgcolor': "#e0e0e0",
@@ -515,9 +514,18 @@ def draw_four_color_gauge(danger_count, total_count):
         }
     ))
 
+    # 使用 Annotation 自訂中央數字，能讓 Plotly 將半圓色塊放大到極致
+    fig.add_annotation(
+        text=f"<b>{danger_count} / {total_count}</b>",
+        x=0.5, y=0.18,
+        xref="paper", yref="paper",
+        font=dict(size=22, color="#2c3e50"),
+        showarrow=False
+    )
+
     fig.update_layout(
-        height=180,
-        margin=dict(l=10, r=10, t=10, b=0),
+        height=140,
+        margin=dict(l=15, r=15, t=10, b=0),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
