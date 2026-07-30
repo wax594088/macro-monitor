@@ -1,7 +1,6 @@
 import io
 import datetime
 import requests
-import math
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -466,67 +465,57 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：1.隱藏外圍數字；2.加寬弧形軌道；3.橘黃色箭頭貼齊外緣並指向中心
+# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
+# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
-        step1, step2, step3 = 0.5, 1.5, 3.5
+        step1 = 0.5
+        step2 = 1.5
+        step3 = 3.5
     else:
-        step1, step2, step3 = 4.0, 8.0, 12.0
+        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
+        step1 = 4.0
+        step2 = 8.0
+        step3 = 12.0
+
+    if danger_count <= step1:
+        bar_color = "#2ecc71"
+    elif danger_count <= step2:
+        bar_color = "#f1c40f"
+    elif danger_count <= step3:
+        bar_color = "#e67e22"
+    else:
+        bar_color = "#e74c3c"
 
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 22}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
-            # 1. 隱藏外圍數字與刻度線
             'axis': {
                 'range': [0, total_count], 
-                'showticklabels': False, 
-                'ticks': ''
+                'showticklabels': False,  # 隱藏外圍數字刻度
+                'ticks': ''               # 隱藏刻度小線條
             },
-            'bar': {'color': 'rgba(0,0,0,0)'},
+            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style}, # 指針弧條厚度滿版
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
             'bordercolor': "#bdc3c7",
-            # 2. 滿版加寬弧軌 (顏色區段呈現)
             'steps': [
-                {'range': [0, step1], 'color': '#2ecc71' if danger_count >= 0 else '#d4efdf', 'line': border_style},
-                {'range': [step1, step2], 'color': '#f1c40f' if danger_count > step1 else '#fcf3cf', 'line': border_style},
-                {'range': [step2, step3], 'color': '#e67e22' if danger_count > step2 else '#fbeee6', 'line': border_style},
-                {'range': [step3, total_count], 'color': '#e74c3c' if danger_count > step3 else '#fadbd8', 'line': border_style}
+                # 透過 thickness 設定將背景色塊弧帶加寬至 0.85
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style, 'thickness': 0.85},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style, 'thickness': 0.85},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style, 'thickness': 0.85},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style, 'thickness': 0.85}
             ]
         }
     ))
 
-    # 3. 極座標校正算式 (中心點原點 x=0.5, y=0.18，弧軌外緣半徑 r=0.45)
-    ratio = min(max(danger_count / total_count, 0.0), 1.0)
-    theta_rad = math.pi * (1.0 - ratio) # 180° ~ 0°
-    
-    center_x, center_y = 0.5, 0.18
-    radius = 0.45
-    
-    arrow_x = center_x + radius * math.cos(theta_rad)
-    arrow_y = center_y + radius * math.sin(theta_rad)
-
-    # 4. 箭頭垂直指向圓心之法線角度
-    text_angle = math.degrees(theta_rad) - 90.0
-
-    fig.add_annotation(
-        x=arrow_x,
-        y=arrow_y,
-        xref="paper",
-        yref="paper",
-        text="▲",
-        showarrow=False,
-        font=dict(size=22, color="#e67e22"), # 高顯眼橘黃色
-        textangle=text_angle
-    )
-
     fig.update_layout(
         height=180,
-        margin=dict(l=20, r=20, t=15, b=10),
+        margin=dict(l=25, r=25, t=15, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -783,7 +772,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險視覺儀表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
