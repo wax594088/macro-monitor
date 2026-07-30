@@ -465,11 +465,18 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：字體不指定硬碼顏色，使數值自動跟隨日夜模式；色塊間加上淺灰色外框 (#bdc3c7)
 def draw_four_color_gauge(danger_count, total_count):
-    step1 = total_count * 0.25
-    step2 = total_count * 0.50
-    step3 = total_count * 0.75
+    # 依總數動態切割分段點，確保整數項數精確對齊色塊
+    if total_count == 6:
+        # 核心指標 (6項) 分段點
+        step1 = 0.5  # 0項 (綠)
+        step2 = 1.5  # 1項 (黃)
+        step3 = 3.5  # 2~3項 (橘)；4~6項 (紅)
+    else:
+        # 輔助指標 (16項) 分段點
+        step1 = 0.5   # 0項 (綠)
+        step2 = 4.5   # 1~4項 (黃)
+        step3 = 8.5   # 5~8項 (橘)；9~16項 (紅)
 
     if danger_count <= step1:
         bar_color = "#2ecc71"
@@ -480,7 +487,6 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    # 設定色塊外框為淺灰色
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
@@ -488,7 +494,13 @@ def draw_four_color_gauge(danger_count, total_count):
         value = danger_count,
         number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
-            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#bdc3c7", 'tickfont': {'size': 12}},
+            'axis': {
+                'range': [0, total_count], 
+                'tickwidth': 1, 
+                'tickcolor': "#bdc3c7", 
+                'tickfont': {'size': 12},
+                'dtick': 1 if total_count == 6 else 2
+            },
             'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
