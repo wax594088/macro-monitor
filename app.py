@@ -495,10 +495,8 @@ def draw_four_color_gauge(danger_count, total_count):
         gauge = {
             'axis': {
                 'range': [0, total_count], 
-                'tickwidth': 1, 
-                'tickcolor': "#bdc3c7", 
-                'tickfont': {'size': 12},
-                'dtick': 1 if total_count == 6 else 2
+                'showticklabels': False,  # 隱藏外圍數字刻度
+                'ticks': ''               # 隱藏刻度小線條
             },
             'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
@@ -772,7 +770,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險視覺儀表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
