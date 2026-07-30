@@ -472,7 +472,6 @@ def draw_four_color_gauge(danger_count, total_count):
         step2 = 1.5
         step3 = 3.5
     else:
-        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
         step1 = 4.0
         step2 = 8.0
         step3 = 12.0
@@ -486,39 +485,55 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    border_style = {'color': '#bdc3c7', 'width': 1.5}
+    # 計算四個區間的弧面大小
+    v1 = step1
+    v2 = step2 - step1
+    v3 = step3 - step2
+    v4 = total_count - step3
 
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
-        gauge = {
-            'shape': "angular",
-            'axis': {
-                'range': [0, total_count], 
-                'showticklabels': False,  # 移除外圍數字刻度
-                'ticks': ''               # 移除刻度小標記
-            },
-            'bar': {
-                'color': bar_color, 
-                'thickness': 1.0,         # 指針/當前數值條覆蓋滿版
-                'line': border_style
-            },
-            'bgcolor': "#e0e0e0",
-            'borderwidth': 0,
-            'steps': [
-                # 移除 steps 內的 thickness 避免 ValueError
-                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
-                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
-                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
-                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
-            ]
-        }
+    # 設定背景四色與亮色（當前數值落入的區間會顯示高亮色）
+    colors = ['#d4efdf', '#fcf3cf', '#fbeee6', '#fadbd8']
+    if danger_count <= step1:
+        colors[0] = bar_color
+    elif danger_count <= step2:
+        colors[1] = bar_color
+    elif danger_count <= step3:
+        colors[2] = bar_color
+    else:
+        colors[3] = bar_color
+
+    # 利用 Pie 圖繪製上半圓（180 度），底部 180 度填入透明區塊
+    values = [v1, v2, v3, v4, total_count]
+    pie_colors = colors + ['rgba(0,0,0,0)']
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Pie(
+        values=values,
+        marker=dict(
+            colors=pie_colors,
+            line=dict(color='#bdc3c7', width=1.5)
+        ),
+        hole=0.55,          # 控制內圈洞口大小，數值越小弧帶越厚（0.55 代表內徑為 55%）
+        rotation=90,        # 旋轉角度，使開口朝下
+        direction='clockwise',
+        sort=False,
+        showlegend=False,
+        hoverinfo='none',
+        textinfo='none'
     ))
+
+    # 在中心填入數值文字
+    fig.add_annotation(
+        text=f"<b>{danger_count} / {total_count}</b>",
+        x=0.5, y=0.35,
+        font=dict(size=22, color="#2c3e50"),
+        showarrow=False
+    )
 
     fig.update_layout(
         height=180,
-        margin=dict(l=10, r=10, t=10, b=10), # 透過邊距緊湊化讓視覺上的弧形色塊更大
+        margin=dict(l=10, r=10, t=10, b=0),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
