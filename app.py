@@ -465,18 +465,17 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
+# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
 def draw_four_color_gauge(danger_count, total_count):
-    # 依總數動態切割分段點，確保整數項數精確對齊色塊
     if total_count == 6:
-        # 核心指標 (6項) 分段點
-        step1 = 0.5  # 0項 (綠)
-        step2 = 1.5  # 1項 (黃)
-        step3 = 3.5  # 2~3項 (橘)；4~6項 (紅)
+        step1 = 0.5
+        step2 = 1.5
+        step3 = 3.5
     else:
-        # 輔助指標 (16項) 分段點
-        step1 = 0.5   # 0項 (綠)
-        step2 = 4.5   # 1~4項 (黃)
-        step3 = 8.5   # 5~8項 (橘)；9~16項 (紅)
+        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
+        step1 = 4.0
+        step2 = 8.0
+        step3 = 12.0
 
     if danger_count <= step1:
         bar_color = "#2ecc71"
@@ -773,10 +772,9 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
-            # 使用 Streamlit 原生標題，字體色自動隨日夜模式轉換（深色純白、日間深灰）
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
             st.plotly_chart(draw_four_color_gauge(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
         with g2_col:
