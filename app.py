@@ -51,11 +51,12 @@ def get_fred_data(series_id, danger_threshold, is_greater_danger=True, key=None)
             df.columns = ['Date', 'Value']
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         is_danger = (current_val > danger_threshold) if is_greater_danger else (current_val < danger_threshold)
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # 殖利率曲線動態轉折檢測
 @st.cache_data(ttl=3600)
@@ -74,6 +75,7 @@ def get_yield_curve_steepening_data(series_id, key=None):
         df = df.sort_values('Date').reset_index(drop=True)
         
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         
         six_months_ago = df['Date'].iloc[-1] - pd.DateOffset(months=6)
@@ -88,9 +90,9 @@ def get_yield_curve_steepening_data(series_id, key=None):
         is_danger = had_inversion and steepening and (current_val > 0.0)
         
         df_display = df[df['Date'] >= start_date].reset_index(drop=True)
-        return df_display, current_val, current_date, is_danger
+        return df_display, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # 製造業新訂單總額 (計算 YoY 年增率)
 @st.cache_data(ttl=3600)
@@ -110,11 +112,12 @@ def get_amtmno_yoy_data(danger_threshold=0.0, key=None):
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         is_danger = current_val < danger_threshold
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # 聯準會總資產 (計算 4 週變動率 %)
 @st.cache_data(ttl=3600)
@@ -134,11 +137,12 @@ def get_walcl_change_data(danger_threshold=3.0, key=None):
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         is_danger = current_val > danger_threshold
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # 商業銀行準備金佔聯準會總資產比例 (%)
 @st.cache_data(ttl=3600)
@@ -161,11 +165,12 @@ def get_reserve_ratio_data(danger_threshold=10.0, key=None):
         df.columns = ['Date', 'Res', 'Walcl', 'Value']
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         is_danger = current_val < danger_threshold
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # 銅金比 (結合 200 日移動平均線趨勢判斷)
 @st.cache_data(ttl=3600)
@@ -181,13 +186,14 @@ def get_copper_gold_ratio():
         df = df[df['Date'] >= start_date].reset_index(drop=True)
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_sma = df['SMA200'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         
         is_danger = current_val < current_sma
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 # ================= 資料抓取模組 (台灣) =================
 
@@ -205,12 +211,13 @@ def get_taiwan_historical_volatility(danger_threshold=30.0, is_greater_danger=Tr
 
             if not df.empty:
                 current_val = df['Value'].iloc[-1]
+                prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
                 current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
                 is_danger = (current_val > danger_threshold) if is_greater_danger else (current_val < danger_threshold)
-                return df, current_val, current_date, is_danger
+                return df, current_val, prev_val, current_date, is_danger
     except Exception:
         pass
-    return pd.DataFrame(), 0, "", False
+    return pd.DataFrame(), 0, 0, "", False
 
 @st.cache_data(ttl=3600)
 def get_taiwan_m1b_m2_data(danger_threshold=0.0):
@@ -261,15 +268,16 @@ def get_taiwan_m1b_m2_data(danger_threshold=0.0):
         df = df[df['Date'] >= five_years_ago].sort_values('Date').reset_index(drop=True)
 
         if df.empty:
-            return pd.DataFrame(), 0, "", False
+            return pd.DataFrame(), 0, 0, "", False
 
         current_diff = df['Diff'].iloc[-1]
+        prev_diff = df['Diff'].iloc[-2] if len(df) > 1 else current_diff
         current_date = df['Date'].iloc[-1].strftime('%Y/%m')
         is_danger = current_diff < danger_threshold
 
-        return df, current_diff, current_date, is_danger
+        return df, current_diff, prev_diff, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 @st.cache_data(ttl=3600)
 def get_taiwan_electronics_export_data(danger_threshold=0.0):
@@ -328,15 +336,16 @@ def get_taiwan_electronics_export_data(danger_threshold=0.0):
         df = df[df['Date'] >= five_years_ago].reset_index(drop=True)
 
         if df.empty:
-            return pd.DataFrame(), 0, "", False
+            return pd.DataFrame(), 0, 0, "", False
 
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m')
         is_danger = current_val < danger_threshold
 
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 @st.cache_data(ttl=3600)
 def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
@@ -345,11 +354,12 @@ def get_usdtwd_data(danger_threshold=33.0, is_greater_danger=True):
         df = df.reset_index()[['Date', 'Close']]
         df.columns = ['Date', 'Value']
         current_val = df['Value'].iloc[-1]
+        prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         is_danger = (current_val > danger_threshold) if is_greater_danger else (current_val < danger_threshold)
-        return df, current_val, current_date, is_danger
+        return df, current_val, prev_val, current_date, is_danger
     except Exception:
-        return pd.DataFrame(), 0, "", False
+        return pd.DataFrame(), 0, 0, "", False
 
 @st.cache_data(ttl=3600)
 def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
@@ -363,6 +373,7 @@ def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
             df = df_yf[['Date', 'Value']].dropna().sort_values('Date')
 
             current_val = df['Value'].iloc[-1]
+            prev_val = df['Value'].iloc[-2] if len(df) > 1 else current_val
             current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
 
             status = "normal"
@@ -372,11 +383,11 @@ def get_taiwan_ma20_bias(overheat_threshold=5.0, breakdown_threshold=-5.0):
                 status = "breakdown"
 
             is_danger = (status == "breakdown")
-            return df, current_val, current_date, status, is_danger
+            return df, current_val, prev_val, current_date, status, is_danger
     except Exception:
         pass
 
-    return pd.DataFrame(), 0, "", "normal", False
+    return pd.DataFrame(), 0, 0, "", "normal", False
 
 @st.cache_data(ttl=3600)
 def get_tw_futures_chip(token):
@@ -391,7 +402,7 @@ def get_tw_futures_chip(token):
     }
 
     df_tx = pd.DataFrame()
-    tx_val, tx_date, tx_danger = 0, "", False
+    tx_val, tx_prev, tx_date, tx_danger = 0, 0, "", False
     try:
         resp_tx = requests.get(url, headers=headers, params=params_tx, timeout=10)
         res_json = resp_tx.json()
@@ -408,6 +419,7 @@ def get_tw_futures_chip(token):
 
                 if not df_tx.empty:
                     tx_val = df_tx['Value'].iloc[-1]
+                    tx_prev = df_tx['Value'].iloc[-2] if len(df_tx) > 1 else tx_val
                     tx_date = df_tx['Date'].iloc[-1].strftime('%Y/%m/%d')
                     tx_danger = tx_val < -45000
     except Exception:
@@ -421,7 +433,7 @@ def get_tw_futures_chip(token):
     }
 
     df_mtx = pd.DataFrame()
-    mtx_val, mtx_date, mtx_danger = 0, "", False
+    mtx_val, mtx_prev, mtx_date, mtx_danger = 0, 0, "", False
     try:
         resp_mtx = requests.get(url, headers=headers, params=params_mtx, timeout=10)
         res_json_mtx = resp_mtx.json()
@@ -439,24 +451,25 @@ def get_tw_futures_chip(token):
 
                 if not df_mtx.empty:
                     mtx_val = df_mtx['Value'].iloc[-1]
+                    mtx_prev = df_mtx['Value'].iloc[-2] if len(df_mtx) > 1 else mtx_val
                     mtx_date = df_mtx['Date'].iloc[-1].strftime('%Y/%m/%d')
                     mtx_danger = mtx_val > 10000
     except Exception:
         pass
 
-    return df_tx, tx_val, tx_date, tx_danger, df_mtx, mtx_val, mtx_date, mtx_danger
+    return df_tx, tx_val, tx_prev, tx_date, tx_danger, df_mtx, mtx_val, mtx_prev, mtx_date, mtx_danger
 
-# ================= 視覺化繪圖模組 (包含方案二半圓儀表) =================
+# ================= 視覺化繪圖模組 =================
 
 def draw_gauge_chart(title, danger_count, total_count):
     ratio = (danger_count / total_count) * 100 if total_count > 0 else 0
     
     if danger_count == 0:
-        bar_color = "#2ecc71"  # 綠色 (安全)
+        bar_color = "#2ecc71"
     elif ratio < 35:
-        bar_color = "#f1c40f"  # 黃色 (注意)
+        bar_color = "#f1c40f"
     else:
-        bar_color = "#e74c3c"  # 紅色 (警報)
+        bar_color = "#e74c3c"
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
@@ -641,10 +654,22 @@ def format_metric_value(title, val):
     else:
         return f"{val:,.2f}"
 
+# 渲染帶有升降箭頭與前一期數值的 Metric Helper Function
 def render_metric_and_chart(title, data_tuple):
-    df, current_val, current_date, is_danger = data_tuple
+    df, current_val, prev_val, current_date, is_danger = data_tuple
     val_str = format_metric_value(title, current_val)
-    st.metric(label=title, value=val_str, delta=f"更新日期: {current_date}", delta_color="off")
+    prev_str = format_metric_value(title, prev_val)
+    
+    diff = current_val - prev_val
+    diff_str = f"{diff:+,.2f}" if "銅金比" not in title else f"{diff:+,.4f}"
+    delta_display = f"{diff_str} (前一期: {prev_str}) | 更新日期: {current_date}"
+    
+    st.metric(
+        label=title, 
+        value=val_str, 
+        delta=delta_display, 
+        delta_color="normal"
+    )
     st.plotly_chart(draw_line_chart(title, df, is_danger), use_container_width=True, config={'staticPlot': True})
 
 # ================= 介面排版與資料渲染 =================
@@ -684,14 +709,14 @@ with tab_home:
     twd_data = get_usdtwd_data(33.0, True)
     tw_hv_data = get_taiwan_historical_volatility(30.0, True)
     tw_export_data = get_taiwan_electronics_export_data(0.0)
-    tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
-    tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -5.0)
+    tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_prev, tw_m1b_m2_date, tw_m1b_m2_danger = get_taiwan_m1b_m2_data(0.0)
+    tw_bias_df, tw_bias_val, tw_bias_prev, tw_bias_date, tw_bias_status, tw_bias_danger = get_taiwan_ma20_bias(5.0, -5.0)
 
-    tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger, \
-    tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_date, tw_retail_oi_danger = get_tw_futures_chip(finmind_token)
+    tw_future_oi_df, tw_future_oi_val, tw_future_oi_prev, tw_future_oi_date, tw_future_oi_danger, \
+    tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_prev, tw_retail_oi_date, tw_retail_oi_danger = get_tw_futures_chip(finmind_token)
 
-    tw_future_oi_data = (tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger)
-    tw_retail_oi_data = (tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_date, tw_retail_oi_danger)
+    tw_future_oi_data = (tw_future_oi_df, tw_future_oi_val, tw_future_oi_prev, tw_future_oi_date, tw_future_oi_danger)
+    tw_retail_oi_data = (tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_prev, tw_retail_oi_date, tw_retail_oi_danger)
 
     aux_indicators = [
         ("聯準會總資產近月變動率", walcl_data),
@@ -705,25 +730,25 @@ with tab_home:
         ("銅金比 (含 200SMA)", cg_ratio_data),
         ("美元兌新台幣匯率", twd_data),
         ("財政部電子零組件出口年增率", tw_export_data),
-        ("台灣 M1B-M2 剪刀差", (tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger)),
-        ("大盤月線乖離率", (tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_danger)),
+        ("台灣 M1B-M2 剪刀差", (tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_prev, tw_m1b_m2_date, tw_m1b_m2_danger)),
+        ("大盤月線乖離率", (tw_bias_df, tw_bias_val, tw_bias_prev, tw_bias_date, tw_bias_danger)),
         ("台指期歷史波動率 (20日HV)", tw_hv_data),
         ("外資台指期貨淨未平倉", tw_future_oi_data),
         ("散戶小台淨未平倉", tw_retail_oi_data)
     ]
 
     # 計算統計數
-    core_danger_items = [item for item in core_indicators if item[1][3]]
-    aux_danger_items = [item for item in aux_indicators if item[1][3]]
+    core_danger_items = [item for item in core_indicators if item[1][4]]
+    aux_danger_items = [item for item in aux_indicators if item[1][4]]
 
     core_danger_count = len(core_danger_items)
     aux_danger_count = len(aux_danger_items)
 
-    # ================= 方案二與三結合：頂部雙欄儀表區 =================
+    # ================= 雙欄儀表區 =================
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
+        st.markdown("#### 📊 風險視覺儀表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.plotly_chart(draw_gauge_chart("核心流動性風險", core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
@@ -736,14 +761,14 @@ with tab_home:
         if core_danger_count > 0:
             st.error(f"🔴 **核心流動性發出嚴重警報 ({core_danger_count}/6 項超標)：**")
             for title, data in core_danger_items:
-                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[2]})")
+                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
         else:
             st.success("🟢 **核心流動性：** 全球金融體系融資與信用正常，無系統性風險。")
 
         if aux_danger_count > 0:
             st.warning(f"🟡 **輔助景氣與籌碼異常 ({aux_danger_count}/16 項超標)：**")
             for title, data in aux_danger_items:
-                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[2]})")
+                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
         else:
             st.info("🟢 **輔助景氣與籌碼：** 總體經濟與台股籌碼結構良好。")
 
@@ -795,7 +820,8 @@ with tab_home:
 
     st.write("---")
 
-    st.metric(label="台灣-M1B vs. M2 (剪刀差)", value=f"{tw_m1b_m2_diff:,.2f}%", delta=f"更新日期: {tw_m1b_m2_date}", delta_color="off")
+    tw_m1b_m2_diff_str = f"{tw_m1b_m2_diff - tw_m1b_m2_prev:+,.2f}% (前一期: {tw_m1b_m2_prev:,.2f}%) | 更新日期: {tw_m1b_m2_date}"
+    st.metric(label="台灣-M1B vs. M2 (剪刀差)", value=f"{tw_m1b_m2_diff:,.2f}%", delta=tw_m1b_m2_diff_str, delta_color="normal")
     st.plotly_chart(draw_m1b_m2_chart(tw_m1b_m2_df, tw_m1b_m2_danger), use_container_width=True, config={'staticPlot': True})
     st.markdown("**監控用意：** 衡量國內股市資金動態與流動性。<br>**判斷方式：** M1B 年增率大於 M2 屬資金動能充沛。<br>**危機標準：** M1B 年增率急遽下滑並由上往下穿透 M2（死亡交叉）。", unsafe_allow_html=True)
 
@@ -861,7 +887,8 @@ with tab_home:
         render_metric_and_chart("台指期歷史波動率 (20日HV)", tw_hv_data)
         st.markdown("**監控用意：** 監控台股大盤短線價格真實劇烈變動程度。<br>**判斷方式：** 數值急升代表台股大盤短線走勢轉趨劇烈。<br>**危機標準：** 年化歷史波動率突破 30.0% 進入高風險狀態。", unsafe_allow_html=True)
     with tw_chip2:
-        st.metric(label="大盤乖離冷熱指標", value=f"{tw_bias_val:,.2f}%", delta=f"更新日期: {tw_bias_date}", delta_color="off")
+        tw_bias_diff_str = f"{tw_bias_val - tw_bias_prev:+,.2f}% (前一期: {tw_bias_prev:,.2f}%) | 更新日期: {tw_bias_date}"
+        st.metric(label="大盤乖離冷熱指標", value=f"{tw_bias_val:,.2f}%", delta=tw_bias_diff_str, delta_color="normal")
         st.plotly_chart(draw_bias_chart(tw_bias_df, tw_bias_status), use_container_width=True, config={'staticPlot': True})
         st.markdown("**監控用意：** 觀察台股大盤相對於月線（20MA）的價格偏離程度，判定短線過熱或乖離過大。<br>**判斷方式：** 0% 為基準線。高於 +5% 短線過熱；低於 -5% 短線超賣乖離過大。<br>**危機標準：** 跌破 -5.0% 反映短線價格結構轉弱與修正壓力。", unsafe_allow_html=True)
 
