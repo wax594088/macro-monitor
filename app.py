@@ -17,14 +17,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 原生選單與工具列，並大幅縮減頂部內聚空白
+# 隱藏右上角 Streamlit 原生選單與工具列，並設定適當頁面邊距
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .block-container {
-        padding-top: 0.5rem !important;
+        padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
     </style>
@@ -465,8 +465,8 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：縮小高度並重新設定內距，避免手機直向堆疊時字體被壓住
-def draw_gauge_chart(title, danger_count, total_count):
+# 修正：移除 Plotly 內建的 title 屬性，改由外層直接印出小標，設定專屬高度避免壓字
+def draw_gauge_chart(danger_count, total_count):
     ratio = (danger_count / total_count) * 100 if total_count > 0 else 0
     
     if danger_count == 0:
@@ -479,8 +479,7 @@ def draw_gauge_chart(title, danger_count, total_count):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 18, 'color': '#2c3e50'}},
-        title = {'text': title, 'font': {'size': 13, 'color': '#34495e'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 22, 'color': '#2c3e50'}},
         gauge = {
             'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "gray"},
             'bar': {'color': bar_color},
@@ -494,8 +493,8 @@ def draw_gauge_chart(title, danger_count, total_count):
     ))
 
     fig.update_layout(
-        height=130,
-        margin=dict(l=15, r=15, t=25, b=0),
+        height=180,
+        margin=dict(l=25, r=25, t=10, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -755,9 +754,11 @@ with tab_home:
         st.markdown("#### 📊 風險視覺儀表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
-            st.plotly_chart(draw_gauge_chart("核心流動性風險", core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
+            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
+            st.plotly_chart(draw_gauge_chart(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
         with g2_col:
-            st.plotly_chart(draw_gauge_chart("輔助景氣與籌碼", aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
+            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
+            st.plotly_chart(draw_gauge_chart(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
 
     with summary_col:
         st.markdown("#### 🚨 即時警戒摘要清單")
