@@ -466,7 +466,7 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 動態繪製橘黃色箭頭標籤，推進彩色弧形，隱藏外圈數字
+# 修正：精確計算圓心 (x=0.5, y=0.15) 與箭頭尖端法線角度，實現箭頭貼齊弧軌外緣並指向中心
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
         step1, step2, step3 = 0.5, 1.5, 3.5
@@ -475,7 +475,6 @@ def draw_four_color_gauge(danger_count, total_count):
 
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
-    # 1. 滿版彩色弧軌 Indicator
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
@@ -486,7 +485,7 @@ def draw_four_color_gauge(danger_count, total_count):
                 'showticklabels': False, 
                 'ticks': ''
             },
-            'bar': {'color': 'rgba(0,0,0,0)'}, # 透明條，透過背景 step 呈現顏色
+            'bar': {'color': 'rgba(0,0,0,0)'},
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
             'bordercolor': "#bdc3c7",
@@ -499,26 +498,29 @@ def draw_four_color_gauge(danger_count, total_count):
         }
     ))
 
-    # 2. 計算極座標：角度 theta 與半徑位置 (計算弧軌外緣對應之橘黃色箭頭)
+    # 1. 極座標精確計算
     ratio = min(max(danger_count / total_count, 0.0), 1.0)
-    theta = math.pi * (1.0 - ratio) # 180 度 ~ 0 度轉換為弧度
+    theta_rad = math.pi * (1.0 - ratio) # 180° ~ 0°
     
-    # 圖形中心 (0.5, 0.28)，外外緣半徑約 0.38
-    arrow_x = 0.5 + 0.38 * math.cos(theta)
-    arrow_y = 0.28 + 0.38 * math.sin(theta)
+    # 2. Plotly 儀表軸心與半徑對齊 (中心原點 x=0.5, y=0.15, 外緣半徑 r=0.42)
+    center_x, center_y = 0.5, 0.15
+    radius = 0.42
+    
+    arrow_x = center_x + radius * math.cos(theta_rad)
+    arrow_y = center_y + radius * math.sin(theta_rad)
 
-    # 3. 箭頭旋轉角計算
-    angle_deg = math.degrees(theta) - 90
+    # 3. 箭頭旋轉角（▲預設朝上 90°，欲使其指向圓心，旋轉角為 (theta - 90°)）
+    text_angle = math.degrees(theta_rad) - 90.0
 
     fig.add_annotation(
         x=arrow_x,
         y=arrow_y,
         xref="paper",
         yref="paper",
-        text="▲", # 實體箭頭標籤
+        text="▲",
         showarrow=False,
-        font=dict(size=24, color="#e67e22"), # 高對比橘黃色
-        textangle=angle_deg
+        font=dict(size=22, color="#e67e22"), # 高顯眼橘黃色箭頭
+        textangle=text_angle
     )
 
     fig.update_layout(
@@ -780,7 +782,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
+        st.markdown("#### 📊 風險視覺儀表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
