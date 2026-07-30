@@ -494,21 +494,21 @@ def draw_four_color_gauge(danger_count, total_count):
         number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
             'shape': "angular",
-            'padding': 0,  # 移除儀表內部邊距，讓弧形色塊盡可能向外擴展
+            'padding': 0,  # 移除儀表內部留白，讓色塊覆蓋最大化
             'axis': {
                 'range': [0, total_count], 
                 'showticklabels': False,  # 隱藏外圍數字刻度
-                'ticks': ''               # 隱藏刻度小標記
+                'ticks': ''               # 隱藏刻度小線條
             },
             'bar': {
                 'color': bar_color, 
-                'thickness': 1.0,         # 數值條覆蓋整個弧形寬度
+                'thickness': 1.0,         # 當前數值條覆蓋整個弧形寬度
                 'line': border_style
             },
             'bgcolor': "#e0e0e0",
             'borderwidth': 0,
             'steps': [
-                # 將背景四色區塊的厚度（thickness）全部設為 1.0，達成整體色塊加寬效果
+                # 將背景四色區塊厚度 (thickness) 設定為 1.0，達成整體色塊加寬效果
                 {'range': [0, step1], 'color': '#d4efdf', 'line': border_style, 'thickness': 1.0},
                 {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style, 'thickness': 1.0},
                 {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style, 'thickness': 1.0},
@@ -519,7 +519,7 @@ def draw_four_color_gauge(danger_count, total_count):
 
     fig.update_layout(
         height=180,
-        margin=dict(l=10, r=10, t=10, b=10), # 縮減外圍留白，讓弧形色塊視覺範圍最大化
+        margin=dict(l=10, r=10, t=10, b=10), # 縮減容器外圍邊距，放大弧形色塊視覺比例
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -776,7 +776,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
+        st.markdown("#### 📊 風險視覺儀表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
