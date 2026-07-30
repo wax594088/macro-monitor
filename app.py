@@ -446,7 +446,42 @@ def get_tw_futures_chip(token):
 
     return df_tx, tx_val, tx_date, tx_danger, df_mtx, mtx_val, mtx_date, mtx_danger
 
-# ================= 視覺化繪圖模組 =================
+# ================= 視覺化繪圖模組 (包含方案二半圓儀表) =================
+
+def draw_gauge_chart(title, danger_count, total_count):
+    ratio = (danger_count / total_count) * 100 if total_count > 0 else 0
+    
+    if danger_count == 0:
+        bar_color = "#2ecc71"  # 綠色 (安全)
+    elif ratio < 35:
+        bar_color = "#f1c40f"  # 黃色 (注意)
+    else:
+        bar_color = "#e74c3c"  # 紅色 (警報)
+
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = danger_count,
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
+        title = {'text': title, 'font': {'size': 14, 'color': '#34495e'}},
+        gauge = {
+            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "gray"},
+            'bar': {'color': bar_color},
+            'bgcolor': "white",
+            'borderwidth': 1,
+            'bordercolor': "#bdc3c7",
+            'steps': [
+                {'range': [0, total_count], 'color': '#ecf0f1'}
+            ]
+        }
+    ))
+
+    fig.update_layout(
+        height=160,
+        margin=dict(l=20, r=20, t=30, b=10),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)'
+    )
+    return fig
 
 def draw_line_chart(title, df, is_danger):
     if df is None or df.empty:
@@ -593,69 +628,6 @@ def draw_m1b_m2_chart(df, is_danger):
 
     return fig
 
-# 修正：雙軌制儀表板繪製 (移除引發 ValueError 的 insidetextanchor 參數)
-def draw_dual_gauge(core_danger_count, core_total, aux_danger_count, aux_total):
-    fig = go.Figure()
-
-    core_ratio = core_danger_count / core_total if core_total > 0 else 0
-    core_color = "#e74c3c" if core_danger_count > 0 else "#1e824c"
-    core_label = f"系統性流動性危機 (一票否決): {core_danger_count} / {core_total} 項"
-
-    fig.add_trace(go.Bar(
-        x=[100],
-        y=["流動性與信用核心"],
-        orientation='h',
-        marker=dict(color="#ecf0f1"),
-        hoverinfo='none',
-        showlegend=False
-    ))
-    fig.add_trace(go.Bar(
-        x=[core_ratio * 100],
-        y=["流動性與信用核心"],
-        orientation='h',
-        marker=dict(color=core_color),
-        text=f"<b>{core_label}</b>",
-        textposition='inside',
-        textfont=dict(size=14, color="white"),
-        hoverinfo='none',
-        showlegend=False
-    ))
-
-    aux_ratio = aux_danger_count / aux_total if aux_total > 0 else 0
-    aux_color = "#f1c40f" if aux_danger_count > 4 else "#2ecc71"
-    aux_label = f"景氣與籌碼變化: {aux_danger_count} / {aux_total} 項"
-
-    fig.add_trace(go.Bar(
-        x=[100],
-        y=["景氣與籌碼輔助"],
-        orientation='h',
-        marker=dict(color="#ecf0f1"),
-        hoverinfo='none',
-        showlegend=False
-    ))
-    fig.add_trace(go.Bar(
-        x=[aux_ratio * 100],
-        y=["景氣與籌碼輔助"],
-        orientation='h',
-        marker=dict(color=aux_color),
-        text=f"<b>{aux_label}</b>",
-        textposition='inside',
-        textfont=dict(size=14, color="white"),
-        hoverinfo='none',
-        showlegend=False
-    ))
-
-    fig.update_layout(
-        barmode='overlay',
-        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, visible=False, fixedrange=True),
-        yaxis=dict(showgrid=False, tickfont=dict(size=14, color="#2c3e50"), fixedrange=True),
-        height=140,
-        margin=dict(l=120, r=15, t=10, b=10),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)'
-    )
-    return fig
-
 # 格式化數字字串呈現
 def format_metric_value(title, val):
     if "銅金比" in title:
@@ -689,6 +661,15 @@ with tab_home:
     dcpf3m_data = get_fred_data("DCPF3M", 5.5, True, api_key)
     dpcredit_data = get_fred_data("WPC", 25000, True, api_key)
 
+    core_indicators = [
+        ("金融壓力指數 (STLFSI4)", stlfsi_data),
+        ("VIX 恐慌指數 (VIXCLS)", vix_data),
+        ("高收益債利差 (BAMLH0A0HYM2)", hy_oas_data),
+        ("Baa 級企業債利差 (BAA10Y)", baa_data),
+        ("金融商業本票利率 (DCPF3M)", dcpf3m_data),
+        ("貼現窗口借款 (WPC)", dpcredit_data)
+    ]
+
     # 2. 抓取 輔助景氣與籌碼指標 (16 項)
     walcl_data = get_walcl_change_data(3.0, api_key)
     totresns_data = get_reserve_ratio_data(10.0, api_key)
@@ -712,29 +693,59 @@ with tab_home:
     tw_future_oi_data = (tw_future_oi_df, tw_future_oi_val, tw_future_oi_date, tw_future_oi_danger)
     tw_retail_oi_data = (tw_retail_oi_df, tw_retail_oi_val, tw_retail_oi_date, tw_retail_oi_danger)
 
-    # 統計觸發數量
-    core_danger_total = sum([
-        stlfsi_data[3], vix_data[3], hy_oas_data[3], baa_data[3], dcpf3m_data[3], dpcredit_data[3]
-    ])
+    aux_indicators = [
+        ("聯準會總資產近月變動率", walcl_data),
+        ("商業銀行準備金佔總資產比", totresns_data),
+        ("初領失業救濟金", icsa_data),
+        ("10Y-2Y 殖利率曲線陡峭化", t10y2y_data),
+        ("10Y-3M 殖利率曲線陡峭化", t10y3m_data),
+        ("製造業新訂單總額年增率", nosrdisa_data),
+        ("薩姆規則衰退指標", sahm_data),
+        ("芝加哥全國活動指數", cfnai_data),
+        ("銅金比 (含 200SMA)", cg_ratio_data),
+        ("美元兌新台幣匯率", twd_data),
+        ("財政部電子零組件出口年增率", tw_export_data),
+        ("台灣 M1B-M2 剪刀差", (tw_m1b_m2_df, tw_m1b_m2_diff, tw_m1b_m2_date, tw_m1b_m2_danger)),
+        ("大盤月線乖離率", (tw_bias_df, tw_bias_val, tw_bias_date, tw_bias_danger)),
+        ("台指期歷史波動率 (20日HV)", tw_hv_data),
+        ("外資台指期貨淨未平倉", tw_future_oi_data),
+        ("散戶小台淨未平倉", tw_retail_oi_data)
+    ]
 
-    aux_danger_total = sum([
-        walcl_data[3], totresns_data[3], icsa_data[3], t10y2y_data[3], t10y3m_data[3],
-        nosrdisa_data[3], sahm_data[3], cfnai_data[3], cg_ratio_data[3], twd_data[3],
-        tw_export_data[3], tw_m1b_m2_danger, tw_bias_danger, tw_hv_data[3],
-        tw_future_oi_data[3], tw_retail_oi_data[3]
-    ])
+    # 計算統計數
+    core_danger_items = [item for item in core_indicators if item[1][3]]
+    aux_danger_items = [item for item in aux_indicators if item[1][3]]
 
-    # 雙軌儀表板
-    st.plotly_chart(
-        draw_dual_gauge(core_danger_total, 6, aux_danger_total, 16), 
-        use_container_width=True, 
-        config={'staticPlot': True}
-    )
-    
-    if core_danger_total > 0:
-        st.error("⚠️ 警告：金融體系爆發流動性與信用緊縮風險（核心指標觸發）！")
-    else:
-        st.success("✅ 全球金融體系流動性與信用狀況正常")
+    core_danger_count = len(core_danger_items)
+    aux_danger_count = len(aux_danger_items)
+
+    # ================= 方案二與三結合：頂部雙欄儀表區 =================
+    gauge_col, summary_col = st.columns([1, 1])
+
+    with gauge_col:
+        st.markdown("#### 📊 風險視覺儀表")
+        g1_col, g2_col = st.columns(2)
+        with g1_col:
+            st.plotly_chart(draw_gauge_chart("核心流動性風險", core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
+        with g2_col:
+            st.plotly_chart(draw_gauge_chart("輔助景氣與籌碼", aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
+
+    with summary_col:
+        st.markdown("#### 🚨 即時警戒摘要清單")
+        
+        if core_danger_count > 0:
+            st.error(f"🔴 **核心流動性發出嚴重警報 ({core_danger_count}/6 項超標)：**")
+            for title, data in core_danger_items:
+                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[2]})")
+        else:
+            st.success("🟢 **核心流動性：** 全球金融體系融資與信用正常，無系統性風險。")
+
+        if aux_danger_count > 0:
+            st.warning(f"🟡 **輔助景氣與籌碼異常 ({aux_danger_count}/16 項超標)：**")
+            for title, data in aux_danger_items:
+                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[2]})")
+        else:
+            st.info("🟢 **輔助景氣與籌碼：** 總體經濟與台股籌碼結構良好。")
 
     st.divider()
 
