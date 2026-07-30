@@ -1,6 +1,7 @@
 import io
 import datetime
 import requests
+import math
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -465,53 +466,60 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
+# 動態繪製橘黃色箭頭標籤，推進彩色弧形，隱藏外圈數字
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
-        step1 = 0.5
-        step2 = 1.5
-        step3 = 3.5
+        step1, step2, step3 = 0.5, 1.5, 3.5
     else:
-        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
-        step1 = 4.0
-        step2 = 8.0
-        step3 = 12.0
-
-    if danger_count <= step1:
-        bar_color = "#2ecc71"
-    elif danger_count <= step2:
-        bar_color = "#f1c40f"
-    elif danger_count <= step3:
-        bar_color = "#e67e22"
-    else:
-        bar_color = "#e74c3c"
+        step1, step2, step3 = 4.0, 8.0, 12.0
 
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
+    # 1. 滿版彩色弧軌 Indicator
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 22}},
         gauge = {
             'axis': {
                 'range': [0, total_count], 
-                'tickwidth': 1, 
-                'tickcolor': "#bdc3c7", 
-                'tickfont': {'size': 12},
-                'dtick': 1 if total_count == 6 else 2
+                'showticklabels': False, 
+                'ticks': ''
             },
-            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
+            'bar': {'color': 'rgba(0,0,0,0)'}, # 透明條，透過背景 step 呈現顏色
             'bgcolor': "#e0e0e0",
             'borderwidth': 1.5,
             'bordercolor': "#bdc3c7",
             'steps': [
-                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
-                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
-                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
-                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
+                {'range': [0, step1], 'color': '#2ecc71' if danger_count >= 0 else '#d4efdf', 'line': border_style},
+                {'range': [step1, step2], 'color': '#f1c40f' if danger_count > step1 else '#fcf3cf', 'line': border_style},
+                {'range': [step2, step3], 'color': '#e67e22' if danger_count > step2 else '#fbeee6', 'line': border_style},
+                {'range': [step3, total_count], 'color': '#e74c3c' if danger_count > step3 else '#fadbd8', 'line': border_style}
             ]
         }
     ))
+
+    # 2. 計算極座標：角度 theta 與半徑位置 (計算弧軌外緣對應之橘黃色箭頭)
+    ratio = min(max(danger_count / total_count, 0.0), 1.0)
+    theta = math.pi * (1.0 - ratio) # 180 度 ~ 0 度轉換為弧度
+    
+    # 圖形中心 (0.5, 0.28)，外外緣半徑約 0.38
+    arrow_x = 0.5 + 0.38 * math.cos(theta)
+    arrow_y = 0.28 + 0.38 * math.sin(theta)
+
+    # 3. 箭頭旋轉角計算
+    angle_deg = math.degrees(theta) - 90
+
+    fig.add_annotation(
+        x=arrow_x,
+        y=arrow_y,
+        xref="paper",
+        yref="paper",
+        text="▲", # 實體箭頭標籤
+        showarrow=False,
+        font=dict(size=24, color="#e67e22"), # 高對比橘黃色
+        textangle=angle_deg
+    )
 
     fig.update_layout(
         height=180,
@@ -772,7 +780,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險視覺儀表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
