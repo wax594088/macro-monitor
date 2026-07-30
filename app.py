@@ -465,21 +465,20 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 四色分段指針儀表 (綠/黃/橘/紅 4 區段與動態指針)
+# 四色滿版指針儀表 (thickness=1 填滿弧軌)
 def draw_four_color_gauge(danger_count, total_count):
     step1 = total_count * 0.25
     step2 = total_count * 0.50
     step3 = total_count * 0.75
 
-    # 動態指針與邊界顏色判定
     if danger_count <= step1:
-        bar_color = "#2ecc71"  # 綠色
+        bar_color = "#2ecc71"
     elif danger_count <= step2:
-        bar_color = "#f1c40f"  # 黃色
+        bar_color = "#f1c40f"
     elif danger_count <= step3:
-        bar_color = "#e67e22"  # 橘色
+        bar_color = "#e67e22"
     else:
-        bar_color = "#e74c3c"  # 紅色
+        bar_color = "#e74c3c"
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
@@ -487,15 +486,14 @@ def draw_four_color_gauge(danger_count, total_count):
         number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
         gauge = {
             'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#7f8c8d"},
-            'bar': {'color': bar_color, 'thickness': 0.25},
-            'bgcolor': "white",
-            'borderwidth': 1,
-            'bordercolor': "#bdc3c7",
+            'bar': {'color': bar_color, 'thickness': 1.0},
+            'bgcolor': "#e0e0e0",
+            'borderwidth': 0,
             'steps': [
-                {'range': [0, step1], 'color': '#d4efdf'},       # 綠色區段
-                {'range': [step1, step2], 'color': '#fcf3cf'},   # 黃色區段
-                {'range': [step2, step3], 'color': '#fbeee6'},   # 橘色區段
-                {'range': [step3, total_count], 'color': '#fadbd8'} # 紅色區段
+                {'range': [0, step1], 'color': '#d4efdf'},
+                {'range': [step1, step2], 'color': '#fcf3cf'},
+                {'range': [step2, step3], 'color': '#fbeee6'},
+                {'range': [step3, total_count], 'color': '#fadbd8'}
             ]
         }
     ))
@@ -759,7 +757,7 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險視覺儀表")
+        st.markdown("#### 📊 風險監控儀表板")
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
