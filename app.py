@@ -465,7 +465,7 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 四色滿版指針儀表 (thickness=1 填滿弧軌)
+# 修正：針對深色模式提升對比度（數字改為高對比白灰色 #f8f9fa，刻度改為 #bdc3c7）
 def draw_four_color_gauge(danger_count, total_count):
     step1 = total_count * 0.25
     step2 = total_count * 0.50
@@ -483,9 +483,9 @@ def draw_four_color_gauge(danger_count, total_count):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#f8f9fa'}},
         gauge = {
-            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#7f8c8d"},
+            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#bdc3c7", 'tickfont': {'color': '#bdc3c7'}},
             'bar': {'color': bar_color, 'thickness': 1.0},
             'bgcolor': "#e0e0e0",
             'borderwidth': 0,
@@ -753,35 +753,37 @@ with tab_home:
     core_danger_count = len(core_danger_items)
     aux_danger_count = len(aux_danger_items)
 
-    # ================= 雙欄儀表區 =================
+    # ================= 雙欄儀表區 (加入外框容器 st.container) =================
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
-        g1_col, g2_col = st.columns(2)
-        with g1_col:
-            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
-            st.plotly_chart(draw_four_color_gauge(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
-        with g2_col:
-            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
-            st.plotly_chart(draw_four_color_gauge(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
+        with st.container(border=True):
+            st.markdown("#### 📊 風險監控儀表板")
+            g1_col, g2_col = st.columns(2)
+            with g1_col:
+                st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
+                st.plotly_chart(draw_four_color_gauge(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
+            with g2_col:
+                st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
+                st.plotly_chart(draw_four_color_gauge(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
 
     with summary_col:
-        st.markdown("#### 🚨 即時警戒摘要清單")
-        
-        if core_danger_count > 0:
-            st.error(f"🔴 **核心流動性發出嚴重警報 ({core_danger_count}/6 項超標)：**")
-            for title, data in core_danger_items:
-                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
-        else:
-            st.success("🟢 **核心流動性：** 全球金融體系融資與信用正常，無系統性風險。")
+        with st.container(border=True):
+            st.markdown("#### 🚨 即時警戒摘要清單")
+            
+            if core_danger_count > 0:
+                st.error(f"🔴 **核心流動性發出嚴重警報 ({core_danger_count}/6 項超標)：**")
+                for title, data in core_danger_items:
+                    st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
+            else:
+                st.success("🟢 **核心流動性：** 全球金融體系融資與信用正常，無系統性風險。")
 
-        if aux_danger_count > 0:
-            st.warning(f"🟡 **輔助景氣與籌碼異常 ({aux_danger_count}/16 項超標)：**")
-            for title, data in aux_danger_items:
-                st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
-        else:
-            st.info("🟢 **輔助景氣與籌碼：** 總體經濟與台股籌碼結構良好。")
+            if aux_danger_count > 0:
+                st.warning(f"🟡 **輔助景氣與籌碼異常 ({aux_danger_count}/16 項超標)：**")
+                for title, data in aux_danger_items:
+                    st.write(f"• **{title}**：{format_metric_value(title, data[1])} (更新日期: {data[3]})")
+            else:
+                st.info("🟢 **輔助景氣與籌碼：** 總體經濟與台股籌碼結構良好。")
 
     st.divider()
 
