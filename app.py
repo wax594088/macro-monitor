@@ -57,7 +57,7 @@ def get_fred_data(series_id, danger_threshold, is_greater_danger=True, key=None)
     except Exception:
         return pd.DataFrame(), 0, "", False
 
-# 殖利率曲線動態轉折檢測 (判讀：過去6個月曾倒掛，且近1個月內急速向上爬升超過0.5%)
+# 殖利率曲線動態轉折檢測
 @st.cache_data(ttl=3600)
 def get_yield_curve_steepening_data(series_id, key=None):
     try:
@@ -76,7 +76,6 @@ def get_yield_curve_steepening_data(series_id, key=None):
         current_val = df['Value'].iloc[-1]
         current_date = df['Date'].iloc[-1].strftime('%Y/%m/%d')
         
-        # 動態轉折判定邏輯
         six_months_ago = df['Date'].iloc[-1] - pd.DateOffset(months=6)
         one_month_ago = df['Date'].iloc[-1] - pd.DateOffset(months=1)
         
@@ -594,11 +593,10 @@ def draw_m1b_m2_chart(df, is_danger):
 
     return fig
 
-# 雙軌制儀表板繪製
+# 修正：雙軌制儀表板繪製 (移除引發 ValueError 的 insidetextanchor 參數)
 def draw_dual_gauge(core_danger_count, core_total, aux_danger_count, aux_total):
     fig = go.Figure()
 
-    # 核心指標軌 (上方)
     core_ratio = core_danger_count / core_total if core_total > 0 else 0
     core_color = "#e74c3c" if core_danger_count > 0 else "#1e824c"
     core_label = f"系統性流動性危機 (一票否決): {core_danger_count} / {core_total} 項"
@@ -618,13 +616,11 @@ def draw_dual_gauge(core_danger_count, core_total, aux_danger_count, aux_total):
         marker=dict(color=core_color),
         text=f"<b>{core_label}</b>",
         textposition='inside',
-        insidetextanchor='left',
         textfont=dict(size=14, color="white"),
         hoverinfo='none',
         showlegend=False
     ))
 
-    # 輔助指標軌 (下方)
     aux_ratio = aux_danger_count / aux_total if aux_total > 0 else 0
     aux_color = "#f1c40f" if aux_danger_count > 4 else "#2ecc71"
     aux_label = f"景氣與籌碼變化: {aux_danger_count} / {aux_total} 項"
@@ -644,7 +640,6 @@ def draw_dual_gauge(core_danger_count, core_total, aux_danger_count, aux_total):
         marker=dict(color=aux_color),
         text=f"<b>{aux_label}</b>",
         textposition='inside',
-        insidetextanchor='left',
         textfont=dict(size=14, color="white"),
         hoverinfo='none',
         showlegend=False
