@@ -466,7 +466,6 @@ def get_tw_futures_chip(token):
 # ================= 視覺化繪圖模組 =================
 
 # 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
-# 核心 6 項採取特製精確切分，輔助 16 項維持標準四分法 (0-4, 4-8, 8-12, 12-16)
 def draw_four_color_gauge(danger_count, total_count):
     if total_count == 6:
         step1 = 0.5
@@ -494,28 +493,33 @@ def draw_four_color_gauge(danger_count, total_count):
         value = danger_count,
         number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
+            'shape': "angular",
+            'padding': 0,  # 移除儀表內部邊距，讓弧形色塊盡可能向外擴展
             'axis': {
                 'range': [0, total_count], 
                 'showticklabels': False,  # 隱藏外圍數字刻度
-                'ticks': ''               # 隱藏刻度小線條
+                'ticks': ''               # 隱藏刻度小標記
             },
-            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style}, # 指針弧條厚度滿版
+            'bar': {
+                'color': bar_color, 
+                'thickness': 1.0,         # 數值條覆蓋整個弧形寬度
+                'line': border_style
+            },
             'bgcolor': "#e0e0e0",
-            'borderwidth': 1.5,
-            'bordercolor': "#bdc3c7",
+            'borderwidth': 0,
             'steps': [
-                # 透過 thickness 設定將背景色塊弧帶加寬至 0.85
-                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style, 'thickness': 0.85},
-                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style, 'thickness': 0.85},
-                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style, 'thickness': 0.85},
-                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style, 'thickness': 0.85}
+                # 將背景四色區塊的厚度（thickness）全部設為 1.0，達成整體色塊加寬效果
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style, 'thickness': 1.0},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style, 'thickness': 1.0},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style, 'thickness': 1.0},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style, 'thickness': 1.0}
             ]
         }
     ))
 
     fig.update_layout(
         height=180,
-        margin=dict(l=25, r=25, t=15, b=10),
+        margin=dict(l=10, r=10, t=10, b=10), # 縮減外圍留白，讓弧形色塊視覺範圍最大化
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
