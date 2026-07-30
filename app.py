@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 原生選單與工具列，並設定適當頁面邊距
+# 隱藏右上角 Streamlit 原生選單與工具列，設定最適頂部邊距
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -465,36 +465,44 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：移除 Plotly 內建的 title 屬性，改由外層直接印出小標，設定專屬高度避免壓字
-def draw_gauge_chart(danger_count, total_count):
-    ratio = (danger_count / total_count) * 100 if total_count > 0 else 0
-    
-    if danger_count == 0:
-        bar_color = "#2ecc71"
-    elif ratio < 35:
-        bar_color = "#f1c40f"
+# 四色分段指針儀表 (綠/黃/橘/紅 4 區段與動態指針)
+def draw_four_color_gauge(danger_count, total_count):
+    step1 = total_count * 0.25
+    step2 = total_count * 0.50
+    step3 = total_count * 0.75
+
+    # 動態指針與邊界顏色判定
+    if danger_count <= step1:
+        bar_color = "#2ecc71"  # 綠色
+    elif danger_count <= step2:
+        bar_color = "#f1c40f"  # 黃色
+    elif danger_count <= step3:
+        bar_color = "#e67e22"  # 橘色
     else:
-        bar_color = "#e74c3c"
+        bar_color = "#e74c3c"  # 紅色
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 22, 'color': '#2c3e50'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
         gauge = {
-            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "gray"},
-            'bar': {'color': bar_color},
+            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#7f8c8d"},
+            'bar': {'color': bar_color, 'thickness': 0.25},
             'bgcolor': "white",
             'borderwidth': 1,
             'bordercolor': "#bdc3c7",
             'steps': [
-                {'range': [0, total_count], 'color': '#ecf0f1'}
+                {'range': [0, step1], 'color': '#d4efdf'},       # 綠色區段
+                {'range': [step1, step2], 'color': '#fcf3cf'},   # 黃色區段
+                {'range': [step2, step3], 'color': '#fbeee6'},   # 橘色區段
+                {'range': [step3, total_count], 'color': '#fadbd8'} # 紅色區段
             ]
         }
     ))
 
     fig.update_layout(
         height=180,
-        margin=dict(l=25, r=25, t=10, b=10),
+        margin=dict(l=25, r=25, t=15, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
@@ -755,10 +763,10 @@ with tab_home:
         g1_col, g2_col = st.columns(2)
         with g1_col:
             st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
-            st.plotly_chart(draw_gauge_chart(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
+            st.plotly_chart(draw_four_color_gauge(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
         with g2_col:
             st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
-            st.plotly_chart(draw_gauge_chart(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
+            st.plotly_chart(draw_four_color_gauge(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
 
     with summary_col:
         st.markdown("#### 🚨 即時警戒摘要清單")
