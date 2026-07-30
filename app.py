@@ -465,7 +465,7 @@ def get_tw_futures_chip(token):
 
 # ================= 視覺化繪圖模組 =================
 
-# 修正：字體動態調整以解決白天過淡問題，各色塊補齊實體邊框
+# 修正：字體不指定硬碼顏色，使數值自動跟隨日夜模式；色塊間加上淺灰色外框 (#bdc3c7)
 def draw_four_color_gauge(danger_count, total_count):
     step1 = total_count * 0.25
     step2 = total_count * 0.50
@@ -480,19 +480,19 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    # 色塊邊框設定
-    border_style = {'color': '#555555', 'width': 1}
+    # 設定色塊外框為淺灰色
+    border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = danger_count,
-        number = {'suffix': f" / {total_count}", 'font': {'size': 20, 'color': '#2c3e50'}},
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
-            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#555555", 'tickfont': {'color': '#2c3e50', 'size': 12}},
+            'axis': {'range': [0, total_count], 'tickwidth': 1, 'tickcolor': "#bdc3c7", 'tickfont': {'size': 12}},
             'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
-            'borderwidth': 1,
-            'bordercolor': "#555555",
+            'borderwidth': 1.5,
+            'bordercolor': "#bdc3c7",
             'steps': [
                 {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
                 {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
@@ -761,13 +761,14 @@ with tab_home:
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
-        st.markdown("#### 📊 風險監控儀表板")
+        st.markdown("#### 📊 風險監控儀表表")
         g1_col, g2_col = st.columns(2)
         with g1_col:
-            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
+            # 使用 Streamlit 原生標題，字體色自動隨日夜模式轉換（深色純白、日間深灰）
+            st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>核心流動性風險</p>", unsafe_allow_html=True)
             st.plotly_chart(draw_four_color_gauge(core_danger_count, 6), use_container_width=True, config={'staticPlot': True})
         with g2_col:
-            st.caption("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; font-weight: bold; margin-bottom: 0;'>輔助景氣與籌碼</p>", unsafe_allow_html=True)
             st.plotly_chart(draw_four_color_gauge(aux_danger_count, 16), use_container_width=True, config={'staticPlot': True})
 
     with summary_col:
