@@ -472,6 +472,7 @@ def draw_four_color_gauge(danger_count, total_count):
         step2 = 1.5
         step3 = 3.5
     else:
+        # 輔助景氣籌碼 (16項)：維持均等 25% 四分法
         step1 = 4.0
         step2 = 8.0
         step3 = 12.0
@@ -488,23 +489,21 @@ def draw_four_color_gauge(danger_count, total_count):
     border_style = {'color': '#bdc3c7', 'width': 1.5}
 
     fig = go.Figure(go.Indicator(
-        mode = "gauge",  # 改為純 gauge 模式，避免內建數字排版壓縮到弧形區域
+        mode = "gauge+number",
         value = danger_count,
-        domain = {'x': [0, 1], 'y': [0.15, 1]},  # 合法的 0~1 範圍，將弧形稍微向上抬升
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
         gauge = {
-            'shape': "angular",
             'axis': {
                 'range': [0, total_count], 
-                'showticklabels': False,  # 隱藏外圍數字刻度
-                'ticks': ''               # 隱藏刻度小線條
+                'tickwidth': 1, 
+                'tickcolor': "#bdc3c7", 
+                'tickfont': {'size': 12},
+                'dtick': 1 if total_count == 6 else 2
             },
-            'bar': {
-                'color': bar_color, 
-                'thickness': 1.0,         # 數值條滿版覆蓋
-                'line': border_style
-            },
+            'bar': {'color': bar_color, 'thickness': 1.0, 'line': border_style},
             'bgcolor': "#e0e0e0",
-            'borderwidth': 0,
+            'borderwidth': 1.5,
+            'bordercolor': "#bdc3c7",
             'steps': [
                 {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
                 {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
@@ -514,23 +513,14 @@ def draw_four_color_gauge(danger_count, total_count):
         }
     ))
 
-    # 使用 Annotation 自訂中央數字，能讓 Plotly 將半圓色塊放大到極致
-    fig.add_annotation(
-        text=f"<b>{danger_count} / {total_count}</b>",
-        x=0.5, y=0.18,
-        xref="paper", yref="paper",
-        font=dict(size=22, color="#2c3e50"),
-        showarrow=False
-    )
-
     fig.update_layout(
-        height=140,
-        margin=dict(l=15, r=15, t=10, b=0),
+        height=180,
+        margin=dict(l=25, r=25, t=15, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
     return fig
-    
+
 def draw_line_chart(title, df, is_danger):
     if df is None or df.empty:
         fig = go.Figure()
