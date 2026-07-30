@@ -485,68 +485,39 @@ def draw_four_color_gauge(danger_count, total_count):
     else:
         bar_color = "#e74c3c"
 
-    # 計算四區間的角度範圍 (半圓 180 度)
-    w1 = (step1 / total_count) * 180
-    w2 = ((step2 - step1) / total_count) * 180
-    w3 = ((step3 - step2) / total_count) * 180
-    w4 = ((total_count - step3) / total_count) * 180
+    border_style = {'color': '#bdc3c7', 'width': 1.5}
 
-    # 計算各區段起始角度 (順時針配置：180 度到 0 度)
-    a1 = 180 - w1
-    a2 = a1 - w2
-    a3 = a2 - w3
-    a4 = 0
-
-    colors = ['#d4efdf', '#fcf3cf', '#fbeee6', '#fadbd8']
-    if danger_count <= step1:
-        colors[0] = bar_color
-    elif danger_count <= step2:
-        colors[1] = bar_color
-    elif danger_count <= step3:
-        colors[2] = bar_color
-    else:
-        colors[3] = bar_color
-
-    fig = go.Figure()
-
-    # 繪製四色背景區塊 (r 控制外徑，base 控制內徑，差值即為色塊寬度)
-    widths = [w1, w2, w3, w4]
-    angles = [a1, a2, a3, a4]
-
-    for i in range(4):
-        fig.add_trace(go.Barpolar(
-            r=[50],                   # 外半徑長度
-            base=20,                  # 內半徑起點 (調小會讓色塊向內圈延伸變厚)
-            theta=[angles[i]],        # 起始角度
-            width=[widths[i]],        # 扇形角度寬度
-            marker_color=colors[i],
-            marker_line_color="#bdc3c7",
-            marker_line_width=1.5,
-            hoverinfo='none'
-        ))
-
-    # 中央顯示數據文字
-    fig.add_annotation(
-        text=f"<b>{danger_count} / {total_count}</b>",
-        x=0.5, y=0.2,
-        xref="paper", yref="paper",
-        font=dict(size=22, color="#2c3e50"),
-        showarrow=False
-    )
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = danger_count,
+        number = {'suffix': f" / {total_count}", 'font': {'size': 20}},
+        domain = {'x': [0, 1], 'y': [-0.2, 1]},  # y 軸向下拉伸，強迫半圓色塊實質加寬加厚
+        gauge = {
+            'shape': "angular",
+            'axis': {
+                'range': [0, total_count], 
+                'showticklabels': False,  # 隱藏外圍數字刻度
+                'ticks': ''               # 隱藏刻度小線條
+            },
+            'bar': {
+                'color': bar_color, 
+                'thickness': 0.95,        # 數值條覆蓋厚度近乎滿版
+                'line': border_style
+            },
+            'bgcolor': "#e0e0e0",
+            'borderwidth': 0,
+            'steps': [
+                {'range': [0, step1], 'color': '#d4efdf', 'line': border_style},
+                {'range': [step1, step2], 'color': '#fcf3cf', 'line': border_style},
+                {'range': [step2, step3], 'color': '#fbeee6', 'line': border_style},
+                {'range': [step3, total_count], 'color': '#fadbd8', 'line': border_style}
+            ]
+        }
+    ))
 
     fig.update_layout(
         height=180,
         margin=dict(l=10, r=10, t=10, b=0),
-        showlegend=False,
-        polar=dict(
-            hole=0.3,
-            sector=[0, 180],           # 僅顯示上半圓
-            radialaxis=dict(visible=False), # 隱藏半徑刻度
-            angularaxis=dict(
-                visible=False,         # 隱藏角度與外圍數字
-                direction="counterclockwise"
-            )
-        ),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)'
     )
