@@ -259,8 +259,37 @@ with tab_home:
         mm.render_metric_and_chart("散戶小台淨未平倉", tw_retail_oi_data)
         st.markdown("**監控用意：** 觀察市場散戶槓桿部位，作為極端行情的反指標。<br>**判斷方式：** 大盤下跌時散戶淨多單快速累積追跌抄底，代表籌碼沉澱不良，易引發多頭踩踏。<br>**危機標準：** 散戶淨多單異常激增（突破 10,000 口）且大盤持續破底。", unsafe_allow_html=True)
 
-with tab_analysis:
-    st.write("產業鏈分析模組建置中...")
 
 with tab_news:
-    st.write("新聞市況彙整模組建置中...")
+    st.markdown("#### 📰 新聞市況彙整 (無 AI 測試版)")
+    
+    # 搜尋輸入框
+    search_query = st.text_input("搜尋關鍵字（例如：台積電、半導體）", "")
+    
+    # 讀取資料庫新聞
+    news_rows = nm.get_news_from_db(search_query)
+    
+    if not news_rows:
+        st.info("目前資料庫中沒有相關新聞，請先確認資料庫或調整搜尋條件。")
+    else:
+        st.write(f"共找到 **{len(news_rows)}** 筆新聞紀錄：")
+        
+        # 以卡片清單形式呈現
+        for row in news_rows:
+            date, title, source, url, summary, importance, impact_companies, report_count = row
+            
+            with st.container(border=True):
+                # 標題與超連結
+                st.markdown(f"**[{title}]({url})**")
+                
+                # 相關資訊標籤
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.caption(f"來源：{source}")
+                with col_b:
+                    st.caption(f"時間：{date}")
+                with col_c:
+                    st.caption(f"同事件報導篇數：{report_count} 篇")
+
+with tab_analysis:
+    st.write("產業鏈分析模組建置中...")
