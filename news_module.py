@@ -2,6 +2,8 @@ import feedparser
 import sqlite3
 import urllib.parse
 import os
+import re
+from collections import Counter
 from groq import Groq
 from email.utils import parsedate_to_datetime
 import datetime
@@ -65,32 +67,69 @@ def parse_pub_date(published_str):
 
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        return ["台股 營收 突破", "產業 政策 供應鏈"], "未偵測到 GROQ_API_KEY 環境變數"
-        
+    
+    # 【步驟一】先由程式主動抓取 Google 財經即時頭條標題作為市場真實背景
+    realtime_headlines = []
     try:
-        client = Groq(api_key=api_key)
-        prompt = """
-        你是一個專業的台股操盤手。請嚴格從以下 5 大核心維度中發想 3 個搜尋短字串：
-        1. 政策與預算紅利（政府重大採購、國防預算、法案或補貼）
-        2. 突發風險與變故（企業調查、訴訟、重訊或經營權變動）
-        3. 基本面拐點與大單（大單傳聞、併購案、財報超預期）
-        4. 總體經濟變數（通膨、就業、央行利率決議）
-        5. 供應鏈衝擊（斷鏈、短缺、原物料價格波動）
+        fallback_url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+        feed = feedparser.parse(fallback_url)
+        realtime_headlines = [entry.title for entry in feed.entries[:25]]
+    except Exception:
+        pass
 
-        請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
-        """
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
-        text = response.choices[0].message.content.strip()
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-        queries = lines[:3] if lines else ["台股 營收 突破", "產業 政策 供應鏈"]
-        return queries, "動態關鍵字產生成功"
-    except Exception as e:
-        return ["台股 營收 突破", "產業 政策 供應鏈"], f"動態關鍵字產生失敗: {e}"
+    headlines_text = "\n".join(realtime_headlines) if realtime_headlines else "近期台股科技、半導體、政策與總經動態"
+
+    # 【步驟二】當 API 額度正常時，將即時標題餵給 AI，讓 AI 從中精選與對應熱點
+    if api_key:
+        try:
+            client = Groq(api_key=api_key)
+            prompt = f"""
+            以下是今天從市場即時抓取的新聞標題：
+            {headlines_text}
+
+            你是一個專業的台股操盤手。請從上述真實標題與以下 5 大核心維度中，綜合歸納出 3 個最能對應當前盤勢熱點的精確搜尋短字串：
+            1. 政策與預算紅利（政府重大採購、國防預算、法案或補貼）
+            2. 突發風險與變故（企業調查、訴訟、重訊或經營權變動）
+            3. 基本面拐點與大單（大單傳聞、併購案、財報超預期）
+            4. 總體經濟變數（通膨、就業、央行利率決議）
+            5. 供應鏈衝擊（斷鏈、短缺、原物料價格波動）
+
+            請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
+            """
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            text = response.choices[0].message.content.strip()
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
+            if lines:
+                return lines[:3], "動態關鍵字產生成功 (AI 結合即時市場熱點)"
+        except Exception:
+            pass 
+
+    # 【步驟三】若 AI 呼叫失敗或額度滿，退回純高頻詞統計備援
+    try:
+        if realtime_headlines:
+            words = []
+            stopwords = {"的", "股", "市", "與", "在", "等", "台", "美", "日", "月", "年", "將", "要", "受", "喊", "創", "高", "低", "飆", "跌"}
+            for t in realtime_headlines:
+                clean_t = re.sub(r'[^\w\s]', '', t)
+                for i in range(len(clean_t) - 1):
+                    w = clean_t[i:i+2]
+                    if w not in stopwords and not w.isdigit():
+                        words.append(w)
+            common_words = [item[0] for item in Counter(words).most_common(10)]
+            if len(common_words) >= 6:
+                return [
+                    f"{common_words[0]} {common_words[1]}",
+                    f"{common_words[2]} {common_words[3]}",
+                    f"{common_words[4]} {common_words[5]}"
+                ], "動態關鍵字產生成功 (熱點高頻詞萃取備援)"
+    except Exception:
+        pass
+
+    return ["台股 營收 突破", "產業 政策 供應鏈"], "動態關鍵字產生失敗 (使用預設)"
 
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
@@ -131,10 +170,8 @@ def analyze_news_with_ai(title, source):
                 
         return summary, importance, impact_companies
     except Exception as e:
-        # 當遇到 429 額度超限或其他 API 錯誤時的備援處理
         error_str = str(e)
         if "429" in error_str or "rate_limit" in error_str.lower():
-            # 啟用純規則簡易判斷，避免直接略過
             return f"AI 額度已滿，改由系統自動篩選：{title}", "🟡 中", "台股相關產業"
         return f"AI 解析失敗: {e}", "⚪ 低", "無"
 
