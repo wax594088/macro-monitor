@@ -10,6 +10,9 @@ import yfinance as yf
 import pandas_datareader.data as web
 from fredapi import Fred
 
+# 設定抓取時間範圍（近五年）
+end_date = datetime.datetime.now()
+start_date = end_date - pd.DateOffset(years=5)
 
 # ================= 資料抓取模組 (通用與美股) =================
 
