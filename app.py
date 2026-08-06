@@ -256,7 +256,7 @@ with tab_home:
 
 
 with tab_news:
-    # 調整欄位比例以確保按鈕不分行，寬度依文字長度自動調整
+    # 頂部標題與按鈕區塊（按鈕不分行，靠右對齊）
     col_t, col_b1, col_b2 = st.columns([2.0, 1.2, 1.2])
     with col_t:
         st.markdown("#### 📰 財經事件驅動情資解析")
@@ -265,26 +265,36 @@ with tab_news:
     with col_b2:
         clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫")
     
+    # 處理清除資料庫按鈕
     if clear_clicked:
         if nm.clear_all_news():
+            # 清除時同時清空 session state 中的抓取結果記錄
+            st.session_state.pop("last_fetch_success", None)
+            st.session_state.pop("last_fetch_logs", None)
             st.success("資料庫已成功清空！")
             st.rerun()
         else:
             st.error("清除失敗，請檢查資料庫狀態。")
 
+    # 處理執行抓取按鈕並存入 session_state 永久保留
     if fetch_clicked:
         execution_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with st.spinner(f"正在聯絡 AI 解析政策、訂單與總經事件 (執行時間: {execution_time})，請稍候..."):
             count, logs = nm.fetch_and_store_news()
-            st.success(f"抓取與解析完成！執行時間：{execution_time}，成功新增 {count} 筆高價值情報！")
-            
+            st.session_state["last_fetch_success"] = f"抓取與解析完成！執行時間：{execution_time}，成功新增 {count} 筆高價值情報！"
+            st.session_state["last_fetch_logs"] = logs
+
+    # 只要 session 中有紀錄，就持續顯示（不會因為下方操作而消失）
+    if "last_fetch_success" in st.session_state:
+        st.success(st.session_state["last_fetch_success"])
+        if "last_fetch_logs" in st.session_state:
             with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=False):
-                for log in logs:
+                for log in st.session_state["last_fetch_logs"]:
                     st.write(log)
     
     st.divider()
 
-    # 篩選控制列
+    # 篩選控制列（下方操作不會影響上方紅框顯示）
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
@@ -311,7 +321,7 @@ with tab_news:
             date, title, source, url, summary, importance, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
-                # 只有在真的經過 AI 解析過才顯示 [本新聞經過AI解析]，未經過則完全隱藏
+                # 只有在真的經過 AI 解析過才顯示 [本新聞經過AI解析]
                 if is_ai == 1:
                     st.markdown("**[本新聞經過AI解析]**")
                 
@@ -334,6 +344,5 @@ with tab_news:
                     st.caption(f"時間：{date}")
                 with c3:
                     st.caption(f"曝光總數：{report_count} 篇")
-
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
