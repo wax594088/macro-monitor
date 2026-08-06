@@ -261,29 +261,34 @@ with tab_home:
 
 
 with tab_news:
-    st.markdown("#### 📰 財經新聞市況彙整與情報解析")
+    st.markdown("#### 📰 財經事件驅動情資解析")
     
-    # 頂部控制列：篩選與排序
+    # 資料手動更新按鈕
+    if st.button("🚀 執行最新高價值情資抓取"):
+        with st.spinner("正在聯絡 AI 解析政策、訂單與總經事件，請稍候..."):
+            count = nm.fetch_and_store_news()
+            st.success(f"抓取與解析完成，成功新增 {count} 筆高價值情報！")
+    
+    # 篩選控制列
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
-        search_query = st.text_input("搜尋關鍵字（例如：台積電、半導體、2330）", "")
+        search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
     with col_f2:
-        only_important = st.checkbox("只看重要新聞 (🔴 高)", value=False)
+        only_important = st.checkbox("只看高重要性 (🔴 高)", value=False)
     with col_f3:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
         
     importance_target = "🔴" if only_important else None
     
-    # 讀取資料庫
     news_rows = nm.get_news_from_db(
         search_query=search_query, 
-        limit=40, 
+        limit=30, 
         importance_filter=importance_target, 
         sort_by=sort_option
     )
     
     if not news_rows:
-        st.info("目前沒有符合條件的新聞資料。")
+        st.info("目前資料庫中沒有符合條件的高價值情報，請點擊上方按鈕執行抓取或調整篩選條件。")
     else:
         st.write(f"共呈現 **{len(news_rows)}** 筆過濾後的精選情報：")
         
@@ -291,24 +296,21 @@ with tab_news:
             date, title, source, url, summary, importance, impact_companies, report_count = row
             
             with st.container(border=True):
-                # 上方：標題與重要性符號
                 st.markdown(f"### {importance or '⚪'} [{title}]({url})")
                 
-                # 中間：AI 簡短說明與影響台股
                 if summary:
-                    st.markdown(f"💡 **摘要**：{summary}")
+                    st.markdown(f"💡 **核心摘要**：{summary}")
                 
                 if impact_companies and impact_companies != "無":
-                    st.markdown(f"🏷️ **影響台股**：`{impact_companies}`")
+                    st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
                 
-                # 下方：來源、時間、跨平台曝光數
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.caption(f"來源：{source}")
                 with c2:
                     st.caption(f"時間：{date}")
                 with c3:
-                    st.caption(f"跨平台報導總數：{report_count} 篇")
+                    st.caption(f"曝光總數：{report_count} 篇")
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
