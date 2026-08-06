@@ -181,7 +181,7 @@ def analyze_news_with_ai(title, source):
                     if k in title:
                         matched = v
                         break
-            return "", "🟡 中", matched, 0
+            return "", "🟡", matched, 0
             
         return "", "⚪ 低", "", 0
 
