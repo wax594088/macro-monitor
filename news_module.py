@@ -17,6 +17,8 @@ EXCLUDE_KEYWORDS = [
 def init_db():
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
+    
+    # 建立基礎表格（若不存在）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS news (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,6 +32,19 @@ def init_db():
             report_count INTEGER DEFAULT 1
         )
     """)
+    
+    # 自動檢查並補齊可能缺少的欄位（避免舊版資料庫結構衝突）
+    existing_columns = [row[1] for row in cursor.execute("PRAGMA table_info(news)").fetchall()]
+    cols_to_add = {
+        "summary": "TEXT",
+        "importance": "TEXT",
+        "impact_companies": "TEXT",
+        "report_count": "INTEGER DEFAULT 1"
+    }
+    for col, col_type in cols_to_add.items():
+        if col not in existing_columns:
+            cursor.execute(f"ALTER TABLE news ADD COLUMN {col} {col_type}")
+            
     conn.commit()
     conn.close()
 
