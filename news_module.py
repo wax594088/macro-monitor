@@ -14,6 +14,17 @@ EXCLUDE_KEYWORDS = [
     "退休", "省錢", "發票", "中獎", "運勢", "生肖"
 ]
 
+def clean_old_news():
+    try:
+        conn = sqlite3.connect("news.db")
+        cursor = conn.cursor()
+        cutoff_date = (datetime.datetime.now() - datetime.timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
 def init_db():
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
@@ -32,6 +43,8 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    # 每次初始化時自動執行清理
+    clean_old_news()
 
 def parse_pub_date(published_str):
     try:
