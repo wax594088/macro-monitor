@@ -11,7 +11,7 @@ EXCLUDE_KEYWORDS = [
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
     "定期定額", "小資族", "新手", "教學", "開戶", "ETF掛牌",
     "存股", "理財", "買房", "租屋", "信用卡", "現金回饋", "保險",
-    "退休", "省錢", "發票", "中獎", "星座", "運勢", "生肖"
+    "退休", "省錢", "發票", "中獎", "運勢", "生肖"
 ]
 
 def init_db():
@@ -48,7 +48,13 @@ def generate_dynamic_queries():
     try:
         client = Groq(api_key=api_key)
         prompt = """
-        你是一個專業的台股操盤手。請根據當前最新市場動態，隨機或依據熱點發想 3 個最適合用來搜尋當前市場重大事件、政策紅利、供應鏈變數或突發風險的短字串（例如：「半導體 擴產 訂單」、「國防預算 政策」、「央行 升息 總經」）。
+        你是一個專業的台股操盤手。請嚴格從以下 5 大核心維度中發想 3 個搜尋短字串：
+        1. 政策與預算紅利（政府重大採購、國防預算、法案或補貼）
+        2. 突發風險與變故（企業調查、訴訟、重訊或經營權變動）
+        3. 基本面拐點與大單（大單傳聞、併購案、財報超預期）
+        4. 總體經濟變數（通膨、就業、央行利率決議）
+        5. 供應鏈衝擊（斷鏈、短缺、原物料價格波動）
+
         請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
         """
         response = client.chat.completions.create(
@@ -71,18 +77,18 @@ def analyze_news_with_ai(title, source):
     try:
         client = Groq(api_key=api_key)
         prompt = f"""
-        你是一個專業的台股操盤手。請嚴格評估以下新聞是否具備「實質影響台股股價或產業預期」的潛力：
+        你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
         新聞標題：{title}
         新聞來源：{source}
 
         判斷標準：
         - 若屬於一般理財、生活消費、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
-        - 若屬於「政府重大政策/預算紅利、企業實質大單/營收拐點、突發調查/訴訟風險、財報大幅超乎預期、總體經濟重大變數、供應鏈瓶頸衝擊」，請將重要性設為「🔴 高」或「🟡 中」。
+        - 若屬於 5 大核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
 
         請嚴格依照下列格式回傳：
         摘要：[用一句話精準說明事件本質與市場影響]
         重要性：[請填 🔴高、🟡中、或 ⚪低]
-        影響台股：[必須明確列出受此事件影響的台股公司名稱與代號，例如：台積電(2330)。若無法明確對應具體台股代號或屬於低價值新聞，請務必填「無」]
+        影響台股：[必須明確列出受此事件影響的台股公司名稱與代號，例如：台積電(2330)。若無法明確對應具體台股代號或屬低價值新聞，請填「無」]
         """
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -118,7 +124,6 @@ def fetch_and_store_news():
     total_fetched = 0
     
     for q in target_queries:
-        # 強制加上 when:14d 限制最近兩週
         query_with_time = f"{q} when:14d"
         encoded_query = urllib.parse.quote(query_with_time)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
@@ -178,7 +183,6 @@ def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by=
     if sort_by == "重要性優先":
         sql += " ORDER BY CASE WHEN importance LIKE '%🔴%' THEN 1 WHEN importance LIKE '%🟡%' THEN 2 ELSE 3 END ASC, published_date DESC"
     else:
-        # 修正：改以標準化後的發布日期降冪排序，確保最新在最上方
         sql += " ORDER BY published_date DESC"
         
     sql += " LIMIT ?"
