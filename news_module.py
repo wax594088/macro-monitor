@@ -51,9 +51,15 @@ def init_db():
             summary TEXT,
             importance TEXT,
             impact_companies TEXT,
-            report_count INTEGER DEFAULT 1
+            report_count INTEGER DEFAULT 1,
+            is_ai INTEGER DEFAULT 1
         )
     """)
+    # 相容舊資料庫自動補欄位
+    try:
+        cursor.execute("ALTER TABLE news ADD COLUMN is_ai INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
     clean_old_news()
@@ -110,7 +116,7 @@ def generate_dynamic_queries():
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return "尚未設定 AI 金鑰。", "⚪ 低", "無"
+        return "", "⚪ 低", "無", 0
         
     try:
         client = Groq(api_key=api_key)
@@ -135,7 +141,7 @@ def analyze_news_with_ai(title, source):
         )
         text = response.choices[0].message.content.strip()
         
-        summary, importance, impact_companies = "無摘要", "⚪ 低", "無"
+        summary, importance, impact_companies = "", "⚪ 低", "無"
         for line in text.split("\n"):
             if "摘要：" in line:
                 summary = line.replace("摘要：", "").strip()
@@ -144,24 +150,24 @@ def analyze_news_with_ai(title, source):
             elif "影響台股：" in line:
                 impact_companies = line.replace("影響台股：", "").strip()
                 
-        return summary, importance, impact_companies
+        return summary, importance, impact_companies, 1
     except Exception as e:
         error_str = str(e)
         if "429" in error_str or "rate_limit" in error_str.lower():
             stock_map = {
                 "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
                 "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
-                "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
-                "半導體": "半導體類股", "AI": "台股AI概念股"
+                "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)"
             }
-            matched = "台股供應鏈"
+            matched = "無"
             for k, v in stock_map.items():
                 if k in title:
                     matched = v
                     break
-            return f"AI 額度已滿，改由系統自動篩選：{title}", "🟡 中", matched
+            # 沒經過 AI 解析時，is_ai 設為 0，summary 留空以隱藏摘要
+            return "", "🟡 中", matched, 0
             
-        return f"AI 解析失敗: {e}", "⚪ 低", "無"
+        return "", "⚪ 低", "無", 0
 
 def fetch_and_store_news():
     init_db()
@@ -198,16 +204,16 @@ def fetch_and_store_news():
             if cursor.fetchone():
                 continue
                 
-            summary, importance, impact_companies = analyze_news_with_ai(title, source)
+            summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            if importance == "⚪ 低" or impact_companies == "無" or not impact_companies:
+            if importance == "⚪ 低" or (impact_companies == "無" and is_ai == 1):
                 continue
                 
             try:
                 cursor.execute("""
-                    INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-                """, (url, title, source, published, summary, importance, impact_companies))
+                    INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (url, title, source, published, summary, importance, impact_companies, is_ai))
                 added_count += 1
             except Exception as e:
                 logs.append(f"寫入資料庫錯誤: {e}")
@@ -222,7 +228,7 @@ def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by=
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     
-    sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count FROM news WHERE 1=1"
+    sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
     if search_query:
