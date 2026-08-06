@@ -2,19 +2,15 @@ import streamlit as st
 import datetime
 import pandas as pd
 
-# 導入拆分出去的總經模組
 import macro_module as mm
-# 導入拆分出去的新聞市況彙整模組
 import news_module as nm
 
-# 頁面基礎設定：預設收起側邊欄
 st.set_page_config(
     layout="wide", 
     page_title="總體經濟監控系統",
     initial_sidebar_state="collapsed"
 )
 
-# 隱藏右上角 Streamlit 原生選單與工具列，設定最適頂部邊距
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -27,17 +23,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 側邊欄設定
 st.sidebar.markdown("### 系統設定")
 api_key = st.secrets.get("FRED_API_KEY", "")
 finmind_token = st.secrets.get("FINMIND_TOKEN", "")
 
-# 建立分頁 (新增「新聞市況彙整」Tab)
+st.sidebar.divider()
+st.sidebar.markdown("### 資料庫維護")
+if st.sidebar.button("🗑️ 清除所有新聞並重置資料庫"):
+    if nm.clear_all_news():
+        st.sidebar.success("資料庫已成功清空！")
+        st.rerun()
+    else:
+        st.sidebar.error("清除失敗，請檢查資料庫狀態。")
+
 tab_home, tab_analysis, tab_news = st.tabs(["首頁", "產業鏈分析", "新聞市況彙整"])
 
 with tab_home:
-
-    # 1. 抓取 核心流動性與信用危機指標 (6 項)
     stlfsi_data = mm.get_fred_data("STLFSI4", 2.0, True, api_key)
     vix_data = mm.get_fred_data("VIXCLS", 30.0, True, api_key)
     hy_oas_data = mm.get_fred_data("BAMLH0A0HYM2", 6.0, True, api_key)
@@ -54,7 +55,6 @@ with tab_home:
         ("貼現窗口借款 (WPC)", dpcredit_data)
     ]
 
-    # 2. 抓取 輔助景氣與籌碼指標 (16 項)
     walcl_data = mm.get_walcl_change_data(3.0, api_key)
     totresns_data = mm.get_reserve_ratio_data(10.0, api_key)
     icsa_data = mm.get_fred_data("ICSA", 260000, True, api_key)
@@ -102,7 +102,6 @@ with tab_home:
     core_danger_count = len(core_danger_items)
     aux_danger_count = len(aux_danger_items)
 
-    # 雙欄儀表區
     gauge_col, summary_col = st.columns([1, 1])
 
     with gauge_col:
@@ -135,7 +134,6 @@ with tab_home:
 
     st.divider()
 
-    # 第一層
     st.markdown("### 第一層：全球流動性與信用風險 (美國核心)")
     col1, col2 = st.columns(2)
     with col1:
@@ -167,7 +165,6 @@ with tab_home:
 
     st.divider()
 
-    # 第二層
     st.markdown("### 第二層：台灣基本面與資金流向")
     tw_fund1, tw_fund2 = st.columns(2)
     with tw_fund1:
@@ -186,7 +183,6 @@ with tab_home:
 
     st.divider()
 
-    # 第三層
     st.markdown("### 第三層：美總體景氣與衰退預警 (中長期觀察)")
     col11, col12 = st.columns(2)
     with col11:
@@ -237,7 +233,6 @@ with tab_home:
 
     st.divider()
 
-    # 第四層
     st.markdown("### 第四層：台股短線籌碼與技術面 (同步與落後指標)")
     tw_chip1, tw_chip2 = st.columns(2)
     with tw_chip1:
@@ -272,7 +267,6 @@ with tab_news:
                 for log in logs:
                     st.write(log)
     
-    # 篩選控制列
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
@@ -299,6 +293,8 @@ with tab_news:
             date, title, source, url, summary, importance, impact_companies, report_count = row
             
             with st.container(border=True):
+                # 明確標註 AI 辨識備註
+                st.markdown(f"**[🤖 AI 智慧操盤手深度解析辨識]**")
                 st.markdown(f"### {importance or '⚪'} [{title}]({url})")
                 
                 if summary:
