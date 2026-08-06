@@ -258,15 +258,28 @@ with tab_home:
 with tab_news:
     st.markdown("#### 📰 財經事件驅動情資解析")
     
-    if st.button("🚀 執行最新高價值情資抓取"):
-        with st.spinner("正在聯絡 AI 解析政策、訂單與總經事件，請稍候..."):
-            count, logs = nm.fetch_and_store_news()
-            st.success(f"抓取與解析完成，成功新增 {count} 筆高價值情報！")
-            
-            with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=True):
-                for log in logs:
-                    st.write(log)
+    # 將按鈕直接並排顯示在主畫面上
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        if st.button("🚀 執行最新高價值情資抓取"):
+            with st.spinner("正在聯絡 AI 解析政策、訂單與總經事件，請稍候..."):
+                count, logs = nm.fetch_and_store_news()
+                st.success(f"抓取與解析完成，成功新增 {count} 筆高價值情報！")
+                
+                with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=True):
+                    for log in logs:
+                        st.write(log)
+    with col_btn2:
+        if st.button("🗑️ 清除所有新聞並重置資料庫"):
+            if nm.clear_all_news():
+                st.success("資料庫已成功清空！")
+                st.rerun()
+            else:
+                st.error("清除失敗，請檢查資料庫狀態。")
     
+    st.divider()
+
+    # 篩選控制列
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
@@ -293,7 +306,6 @@ with tab_news:
             date, title, source, url, summary, importance, impact_companies, report_count = row
             
             with st.container(border=True):
-                # 明確標註 AI 辨識備註
                 st.markdown(f"**[🤖 AI 智慧操盤手深度解析辨識]**")
                 st.markdown(f"### {importance or '⚪'} [{title}]({url})")
                 
