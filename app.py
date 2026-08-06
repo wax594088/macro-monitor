@@ -258,7 +258,6 @@ with tab_home:
 with tab_news:
     st.markdown("#### 📰 財經事件驅動情資解析")
     
-    # 採用上下垂直排版並設定滿版寬度 (use_container_width=True)
     fetch_clicked = st.button("🚀 執行最新高價值情資抓取", use_container_width=True)
     clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫", use_container_width=True)
     
@@ -316,7 +315,8 @@ with tab_news:
                 if is_ai == 1:
                     st.markdown("**[本新聞經過AI解析]**")
                 
-                st.markdown(f"##### {importance or '⚪'} [{title}]({url})")
+                # 移除標題的 ##### 標籤，改用標準文字排版以消除右側留白與對齊問題
+                st.markdown(f"{importance or '⚪'} [{title}]({url})")
                 
                 if is_ai == 1 and summary:
                     st.markdown(f"💡 **核心摘要**：{summary}")
