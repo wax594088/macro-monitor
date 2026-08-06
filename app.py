@@ -289,6 +289,14 @@ with tab_news:
                 # 標題與超連結
                 st.markdown(f"**[{title}]({url})**")
                 
+                # 顯示 AI 摘要（若有資料）
+                if summary:
+                    st.markdown(f"💡 **摘要**：{summary}")
+                    
+                # 顯示受影響個股（若有資料）
+                if impact_companies:
+                    st.markdown(f"🏷️ **相關個股**：{impact_companies}")
+                
                 # 相關資訊標籤
                 col_a, col_b, col_c = st.columns(3)
                 with col_a:
