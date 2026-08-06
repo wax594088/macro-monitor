@@ -131,6 +131,11 @@ def analyze_news_with_ai(title, source):
                 
         return summary, importance, impact_companies
     except Exception as e:
+        # 當遇到 429 額度超限或其他 API 錯誤時的備援處理
+        error_str = str(e)
+        if "429" in error_str or "rate_limit" in error_str.lower():
+            # 啟用純規則簡易判斷，避免直接略過
+            return f"AI 額度已滿，改由系統自動篩選：{title}", "🟡 中", "台股相關產業"
         return f"AI 解析失敗: {e}", "⚪ 低", "無"
 
 def fetch_and_store_news():
