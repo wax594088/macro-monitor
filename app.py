@@ -256,13 +256,11 @@ with tab_home:
 
 
 with tab_news:
-    col_t, col_b1, col_b2 = st.columns([2.0, 1.2, 1.2])
-    with col_t:
-        st.markdown("#### 📰 財經事件驅動情資解析")
-    with col_b1:
-        fetch_clicked = st.button("🚀 執行最新高價值情資抓取")
-    with col_b2:
-        clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫")
+    st.markdown("#### 📰 財經事件驅動情資解析")
+    
+    # 採用上下垂直排版並設定滿版寬度 (use_container_width=True)
+    fetch_clicked = st.button("🚀 執行最新高價值情資抓取", use_container_width=True)
+    clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫", use_container_width=True)
     
     if clear_clicked:
         if nm.clear_all_news():
@@ -325,7 +323,6 @@ with tab_news:
                 else:
                     st.markdown("💡 **核心摘要**：[AI額度已滿，無摘要]")
                 
-                # 顯示對應台股標籤：有資料則顯示代號外框，無資料則保持純空白不帶引號
                 if impact_companies and impact_companies.strip():
                     st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
                 else:
