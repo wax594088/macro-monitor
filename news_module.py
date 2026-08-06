@@ -4,11 +4,10 @@ import urllib.parse
 import os
 from google import genai
 
-# 定義需要排除的無關雜訊關鍵字
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
-    "定期定額", "小資族", "新手", "教學", "開戶"
+    "定期定額", "小資族", "新手", "教學", "開戶", "ETF掛牌"
 ]
 
 def init_db():
@@ -30,6 +29,26 @@ def init_db():
     conn.commit()
     conn.close()
 
+def generate_dynamic_queries():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return ["台股 營收 突破", "產業 政策 供應鏈"]
+        
+    client = genai.Client(api_key=api_key)
+    prompt = """
+    你是一個專業的台股操盤手。請根據當前最新市場動態，隨機或依據熱點發想 3 個最適合用來搜尋當前市場重大事件、政策紅利、供應鏈變數或突發風險的短字串（例如：「半導體 擴產 訂單」、「國防預算 政策」、「央行 升息 總經」）。
+    請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        lines = [line.strip() for line in response.text.strip().split("\n") if line.strip()]
+        return lines[:3] if lines else ["台股 營收 突破", "產業 政策 供應鏈"]
+    except Exception:
+        return ["台股 營收 突破", "產業 政策 供應鏈"]
+
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -38,7 +57,7 @@ def analyze_news_with_ai(title, source):
     client = genai.Client(api_key=api_key)
     
     prompt = f"""
-    你是一個專業的台股操盤手助理。請評估以下新聞是否具備「影響市場預期或股價」的潛力：
+    你是一個專業的台股操盤手。請評估以下新聞是否具備「影響市場預期或股價」的潛力：
     新聞標題：{title}
     新聞來源：{source}
 
@@ -49,7 +68,7 @@ def analyze_news_with_ai(title, source):
     請嚴格依照下列格式回傳：
     摘要：[用一句話精準說明事件本質與市場影響]
     重要性：[請填 🔴高、🟡中、或 ⚪低]
-    影響台股：[列出受此事件影響的台股公司名稱與代號，例如：雷虎(8033)。若非高價值事件或無關台股請填「無」]
+    影響台股：[列出受此事件影響的台股公司名稱與代號，例如：台積電(2330)。若非高價值事件或無關台股請填「無」]
     """
     
     try:
@@ -75,14 +94,8 @@ def analyze_news_with_ai(title, source):
 def fetch_and_store_news():
     init_db()
     
-    # 主動鎖定五大核心事件類別的關鍵字組合
-    target_queries = [
-        "無人機 預算 政策",
-        "企業 訂單 獲利 擴產",
-        "財報 營收創高 突破",
-        "調查 訴訟 利空 裁罰",
-        "央行 利率 通膨 總經"
-    ]
+    # 動態產生當前市場關注主軸
+    target_queries = generate_dynamic_queries()
     
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
@@ -108,7 +121,6 @@ def fetch_and_store_news():
                 
             summary, importance, impact_companies = analyze_news_with_ai(title, source)
             
-            # 若 AI 判定為低重要性且無影響台股，直接捨棄不寫入
             if importance == "⚪ 低" and impact_companies == "無":
                 continue
                 
