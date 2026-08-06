@@ -18,33 +18,29 @@ def init_db():
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     
-    # 建立基礎表格（若不存在）
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS news (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT UNIQUE,
-            title TEXT,
-            source TEXT,
-            published_date TEXT,
-            summary TEXT,
-            importance TEXT,
-            impact_companies TEXT,
-            report_count INTEGER DEFAULT 1
-        )
-    """)
+    # 檢查現有表格的欄位
+    cursor.execute("PRAGMA table_info(news)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
     
-    # 自動檢查並補齊可能缺少的欄位（避免舊版資料庫結構衝突）
-    existing_columns = [row[1] for row in cursor.execute("PRAGMA table_info(news)").fetchall()]
-    cols_to_add = {
-        "summary": "TEXT",
-        "importance": "TEXT",
-        "impact_companies": "TEXT",
-        "report_count": "INTEGER DEFAULT 1"
-    }
-    for col, col_type in cols_to_add.items():
-        if col not in existing_columns:
-            cursor.execute(f"ALTER TABLE news ADD COLUMN {col} {col_type}")
-            
+    required_columns = ["id", "url", "title", "source", "published_date", "summary", "importance", "impact_companies", "report_count"]
+    
+    # 如果表格不存在，或是缺少必要欄位，直接重新建立乾淨的表格
+    if not existing_columns or not all(col in existing_columns for col in required_columns):
+        cursor.execute("DROP TABLE IF EXISTS news")
+        cursor.execute("""
+            CREATE TABLE news (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE,
+                title TEXT,
+                source TEXT,
+                published_date TEXT,
+                summary TEXT,
+                importance TEXT,
+                impact_companies TEXT,
+                report_count INTEGER DEFAULT 1
+            )
+        """)
+        
     conn.commit()
     conn.close()
 
