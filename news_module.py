@@ -14,8 +14,27 @@ EXCLUDE_KEYWORDS = [
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝"
 ]
 
+def init_db():
+    conn = sqlite3.connect("news.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS news (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE,
+            title TEXT,
+            source TEXT,
+            published_date TEXT,
+            summary TEXT,
+            importance TEXT,
+            impact_companies TEXT,
+            report_count INTEGER DEFAULT 1
+        )
+    """)
+    conn.commit()
+    conn.close()
+
 def fetch_and_store_news(query="台股"):
-    # 對搜尋關鍵字進行 URL 編碼
+    init_db()
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
     
@@ -35,12 +54,11 @@ def fetch_and_store_news(query="台股"):
         if any(ex in title for ex in EXCLUDE_KEYWORDS):
             continue
             
-        # 2. 檢查是否包含財經核心關鍵字（若完全沒命中則跳過，確保只留財經相關）
+        # 2. 檢查是否包含財經核心關鍵字（若完全沒命中則跳過）
         if not any(kw in title for kw in FINANCIAL_KEYWORDS):
             continue
             
         try:
-            # 嘗試寫入資料庫（網址具備 UNIQUE 約束，重複會自動略過）
             cursor.execute("""
                 INSERT OR IGNORE INTO news (url, title, source, published_date)
                 VALUES (?, ?, ?, ?)
@@ -54,3 +72,26 @@ def fetch_and_store_news(query="台股"):
     conn.commit()
     conn.close()
     return added_count
+
+def get_news_from_db(search_query=""):
+    init_db()
+    conn = sqlite3.connect("news.db")
+    cursor = conn.cursor()
+    
+    if search_query:
+        cursor.execute("""
+            SELECT published_date, title, source, url, summary, importance, impact_companies, report_count 
+            FROM news 
+            WHERE title LIKE ? OR source LIKE ?
+            ORDER BY id DESC
+        """, (f"%{search_query}%", f"%{search_query}%"))
+    else:
+        cursor.execute("""
+            SELECT published_date, title, source, url, summary, importance, impact_companies, report_count 
+            FROM news 
+            ORDER BY id DESC
+        """)
+        
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
