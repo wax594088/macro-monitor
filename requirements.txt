@@ -8,3 +8,4 @@ pandas-datareader
 fredapi
 feedparser
 google-genai
+groq
