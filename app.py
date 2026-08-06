@@ -256,30 +256,36 @@ with tab_home:
 
 
 with tab_news:
-    st.markdown("#### 📰 財經事件驅動情資解析")
+    # 頂部標題與按鈕區塊（按鈕靠右對齊）
+    col_t, col_b1, col_b2 = st.columns([2, 1, 1])
+    with col_t:
+        st.markdown("#### 📰 財經事件驅動情資解析")
+    with col_b1:
+        fetch_clicked = st.button("🚀 執行最新高價值情資抓取", use_container_width=True)
+    with col_b2:
+        clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫", use_container_width=True)
     
-    # 將按鈕直接並排顯示在主畫面上
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("🚀 執行最新高價值情資抓取"):
-            with st.spinner("正在聯絡 AI 解析政策、訂單與總經事件，請稍候..."):
-                count, logs = nm.fetch_and_store_news()
-                st.success(f"抓取與解析完成，成功新增 {count} 筆高價值情報！")
-                
-                with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=True):
-                    for log in logs:
-                        st.write(log)
-    with col_btn2:
-        if st.button("🗑️ 清除所有新聞並重置資料庫"):
-            if nm.clear_all_news():
-                st.success("資料庫已成功清空！")
-                st.rerun()
-            else:
-                st.error("清除失敗，請檢查資料庫狀態。")
+    if clear_clicked:
+        if nm.clear_all_news():
+            st.success("資料庫已成功清空！")
+            st.rerun()
+        else:
+            st.error("清除失敗，請檢查資料庫狀態。")
+
+    if fetch_clicked:
+        execution_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with st.spinner(f"正在聯絡 AI 解析政策、訂單與總經事件 (執行時間: {execution_time})，請稍候..."):
+            count, logs = nm.fetch_and_store_news()
+            st.success(f"抓取與解析完成！執行時間：{execution_time}，成功新增 {count} 筆高價值情報！")
+            
+            # 診斷記錄預設收起 (expanded=False)
+            with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=False):
+                for log in logs:
+                    st.write(log)
     
     st.divider()
 
-    # 篩選控制列
+    # 篩選控制列（保持排序與篩選狀態）
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
@@ -303,16 +309,22 @@ with tab_news:
         st.write(f"共呈現 **{len(news_rows)}** 筆過濾後的精選情報：")
         
         for row in news_rows:
-            date, title, source, url, summary, importance, impact_companies, report_count = row
+            date, title, source, url, summary, importance, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
-                st.markdown(f"**[🤖 AI 智慧操盤手深度解析辨識]**")
-                st.markdown(f"### {importance or '⚪'} [{title}]({url})")
+                # 僅在經 AI 智慧辨識過時才顯示標籤
+                if is_ai == 1:
+                    st.markdown("**[🤖 AI 智慧操盤手深度解析辨識]**")
                 
-                if summary:
+                # 標題字體適度縮小與排版
+                st.markdown(f"##### {importance or '⚪'} [{title}]({url})")
+                
+                # 僅在經 AI 辨識且有摘要內容時顯示核心摘要
+                if is_ai == 1 and summary:
                     st.markdown(f"💡 **核心摘要**：{summary}")
                 
-                if impact_companies and impact_companies != "無":
+                # 僅在明確對應到公司代號（包含括號）時才顯示對應台股
+                if impact_companies and impact_companies != "無" and "(" in impact_companies and ")" in impact_companies:
                     st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
                 
                 c1, c2, c3 = st.columns(3)
