@@ -7,3 +7,4 @@ yfinance
 pandas-datareader
 fredapi
 feedparser
+google-genai
