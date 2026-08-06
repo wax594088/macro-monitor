@@ -3,8 +3,9 @@ import sqlite3
 import urllib.parse
 import os
 from groq import Groq
+from email.utils import parsedate_to_datetime
+import datetime
 
-# 更嚴格的排除黑名單，過濾行銷、理財教學與日常雜訊
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
@@ -31,6 +32,13 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+
+def parse_pub_date(published_str):
+    try:
+        dt = parsedate_to_datetime(published_str)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
@@ -110,19 +118,21 @@ def fetch_and_store_news():
     total_fetched = 0
     
     for q in target_queries:
-        encoded_query = urllib.parse.quote(q)
+        # 強制加上 when:14d 限制最近兩週
+        query_with_time = f"{q} when:14d"
+        encoded_query = urllib.parse.quote(query_with_time)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         feed = feedparser.parse(rss_url)
         total_fetched += len(feed.entries)
-        logs.append(f"【步驟二】搜尋詞「{q}」抓取到原始新聞：{len(feed.entries)} 篇")
+        logs.append(f"【步驟二】搜尋詞「{q} (近兩週)」抓取到原始新聞：{len(feed.entries)} 篇")
         
         for entry in feed.entries:
             title = entry.title
             url = entry.link
             source = entry.get('source', {}).get('title', '未知來源')
-            published = entry.get('published', '')
+            raw_published = entry.get('published', '')
+            published = parse_pub_date(raw_published)
             
-            # 第一道過濾：標題黑名單
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
                 
@@ -132,7 +142,6 @@ def fetch_and_store_news():
                 
             summary, importance, impact_companies = analyze_news_with_ai(title, source)
             
-            # 第二道過濾：嚴格要求必須有具體影響標的且評等不能為低
             if importance == "⚪ 低" or impact_companies == "無" or not impact_companies:
                 continue
                 
@@ -167,9 +176,10 @@ def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by=
         params.append(f"%{importance_filter}%")
         
     if sort_by == "重要性優先":
-        sql += " ORDER BY CASE WHEN importance LIKE '%🔴%' THEN 1 WHEN importance LIKE '%🟡%' THEN 2 ELSE 3 END ASC, id DESC"
+        sql += " ORDER BY CASE WHEN importance LIKE '%🔴%' THEN 1 WHEN importance LIKE '%🟡%' THEN 2 ELSE 3 END ASC, published_date DESC"
     else:
-        sql += " ORDER BY id DESC"
+        # 修正：改以標準化後的發布日期降冪排序，確保最新在最上方
+        sql += " ORDER BY published_date DESC"
         
     sql += " LIMIT ?"
     params.append(limit)
