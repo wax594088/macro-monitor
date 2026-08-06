@@ -68,20 +68,14 @@ def parse_pub_date(published_str):
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
     
-    # 【步驟一】先由程式主動抓取 Google 財經即時頭條標題作為市場真實背景
-    realtime_headlines = []
-    try:
-        fallback_url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-        feed = feedparser.parse(fallback_url)
-        realtime_headlines = [entry.title for entry in feed.entries[:25]]
-    except Exception:
-        pass
-
-    headlines_text = "\n".join(realtime_headlines) if realtime_headlines else "近期台股科技、半導體、政策與總經動態"
-
-    # 【步驟二】當 API 額度正常時，將即時標題餵給 AI，讓 AI 從中精選與對應熱點
+    # 【步驟一】當 API 額度正常時，由 AI 結合即時市場熱點產生關鍵字
     if api_key:
         try:
+            fallback_url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            feed = feedparser.parse(fallback_url)
+            realtime_headlines = [entry.title for entry in feed.entries[:25]]
+            headlines_text = "\n".join(realtime_headlines) if realtime_headlines else "近期台股科技、半導體、政策與總經動態"
+
             client = Groq(api_key=api_key)
             prompt = f"""
             以下是今天從市場即時抓取的新聞標題：
@@ -108,28 +102,13 @@ def generate_dynamic_queries():
         except Exception:
             pass 
 
-    # 【步驟三】若 AI 呼叫失敗或額度滿，退回純高頻詞統計備援
-    try:
-        if realtime_headlines:
-            words = []
-            stopwords = {"的", "股", "市", "與", "在", "等", "台", "美", "日", "月", "年", "將", "要", "受", "喊", "創", "高", "低", "飆", "跌"}
-            for t in realtime_headlines:
-                clean_t = re.sub(r'[^\w\s]', '', t)
-                for i in range(len(clean_t) - 1):
-                    w = clean_t[i:i+2]
-                    if w not in stopwords and not w.isdigit():
-                        words.append(w)
-            common_words = [item[0] for item in Counter(words).most_common(10)]
-            if len(common_words) >= 6:
-                return [
-                    f"{common_words[0]} {common_words[1]}",
-                    f"{common_words[2]} {common_words[3]}",
-                    f"{common_words[4]} {common_words[5]}"
-                ], "動態關鍵字產生成功 (熱點高頻詞萃取備援)"
-    except Exception:
-        pass
-
-    return ["台股 營收 突破", "產業 政策 供應鏈"], "動態關鍵字產生失敗 (使用預設)"
+    # 【步驟二】若 AI 呼叫失敗或額度滿（429），直接使用專業台股財經備援關鍵字
+    # 確保絕對不會抓到奇怪的國外社會新聞或體育賽事
+    return [
+        "台股 半導體 營收 供應鏈",
+        "金管會 政策 產業 影響",
+        "上市 櫃 公司 重訊 獲利"
+    ], "動態關鍵字產生失敗 (已切換至專業台股財經備援關鍵字)"
 
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
