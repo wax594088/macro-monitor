@@ -261,50 +261,54 @@ with tab_home:
 
 
 with tab_news:
-    st.markdown("#### 📰 新聞市況彙整 (無 AI 測試版)")
+    st.markdown("#### 📰 財經新聞市況彙整與情報解析")
     
-    # 如果資料庫完全沒有資料，自動執行一次抓取
-    if not nm.get_news_from_db():
-        with st.spinner("正在初始化並抓取最新財經新聞，請稍候..."):
-            nm.fetch_and_store_news("台股")
-            nm.fetch_and_store_news("半導體")
-            nm.fetch_and_store_news("證券")
+    # 頂部控制列：篩選與排序
+    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+    with col_f1:
+        search_query = st.text_input("搜尋關鍵字（例如：台積電、半導體、2330）", "")
+    with col_f2:
+        only_important = st.checkbox("只看重要新聞 (🔴 高)", value=False)
+    with col_f3:
+        sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
+        
+    importance_target = "🔴" if only_important else None
     
-    # 搜尋輸入框
-    search_query = st.text_input("搜尋關鍵字（例如：台積電、半導體）", "")
-    
-    # 讀取資料庫新聞
-    news_rows = nm.get_news_from_db(search_query)
+    # 讀取資料庫
+    news_rows = nm.get_news_from_db(
+        search_query=search_query, 
+        limit=40, 
+        importance_filter=importance_target, 
+        sort_by=sort_option
+    )
     
     if not news_rows:
-        st.info("目前資料庫中沒有相關新聞，請嘗試輸入其他搜尋條件。")
+        st.info("目前沒有符合條件的新聞資料。")
     else:
-        st.write(f"共找到 **{len(news_rows)}** 筆新聞紀錄：")
+        st.write(f"共呈現 **{len(news_rows)}** 筆過濾後的精選情報：")
         
-        # 以卡片清單形式呈現
         for row in news_rows:
             date, title, source, url, summary, importance, impact_companies, report_count = row
             
             with st.container(border=True):
-                # 標題與超連結
-                st.markdown(f"**[{title}]({url})**")
+                # 上方：標題與重要性符號
+                st.markdown(f"### {importance or '⚪'} [{title}]({url})")
                 
-                # 顯示 AI 摘要（若有資料）
+                # 中間：AI 簡短說明與影響台股
                 if summary:
                     st.markdown(f"💡 **摘要**：{summary}")
-                    
-                # 顯示受影響個股（若有資料）
-                if impact_companies:
-                    st.markdown(f"🏷️ **相關個股**：{impact_companies}")
                 
-                # 相關資訊標籤
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
+                if impact_companies and impact_companies != "無":
+                    st.markdown(f"🏷️ **影響台股**：`{impact_companies}`")
+                
+                # 下方：來源、時間、跨平台曝光數
+                c1, c2, c3 = st.columns(3)
+                with c1:
                     st.caption(f"來源：{source}")
-                with col_b:
+                with c2:
                     st.caption(f"時間：{date}")
-                with col_c:
-                    st.caption(f"同事件報導篇數：{report_count} 篇")
+                with c3:
+                    st.caption(f"跨平台報導總數：{report_count} 篇")
 
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
