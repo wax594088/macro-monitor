@@ -25,6 +25,17 @@ def clean_old_news():
     except Exception:
         pass
 
+def clear_all_news():
+    try:
+        conn = sqlite3.connect("news.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM news")
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
 def init_db():
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
@@ -43,7 +54,6 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    # 每次初始化時自動執行清理
     clean_old_news()
 
 def parse_pub_date(published_str):
