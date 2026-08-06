@@ -153,16 +153,25 @@ def analyze_news_with_ai(title, source):
     except Exception as e:
         error_str = str(e)
         if "429" in error_str or "rate_limit" in error_str.lower():
-            stock_map = {
-                "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
-                "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
-                "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)"
-            }
-            matched = "無"
-            for k, v in stock_map.items():
-                if k in title:
-                    matched = v
-                    break
+            # 1. 優先檢查標題是否自帶括號代號格式
+            match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
+            if match:
+                matched = f"{match.group(1)}({match.group(2)})"
+            else:
+                # 2. 若未帶代號，透過擴充的對應字典進行名稱比對自動補上代號
+                stock_map = {
+                    "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
+                    "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
+                    "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
+                    "科懋": "科懋(6496)", "寶島科": "寶島科(5312)", "凌華": "凌華(6166)",
+                    "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
+                    "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
+                }
+                matched = "無"
+                for k, v in stock_map.items():
+                    if k in title:
+                        matched = v
+                        break
             return "", "🟡 中", matched, 0
             
         return "", "⚪ 低", "無", 0
