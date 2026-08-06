@@ -8,19 +8,23 @@ from groq import Groq
 from email.utils import parsedate_to_datetime
 import datetime
 
+# 強制設定台灣台北時區 (UTC+8)
+TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
+
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
     "定期定額", "小資族", "新手", "教學", "開戶", "ETF掛牌",
     "存股", "理財", "買房", "租屋", "信用卡", "現金回饋", "保險",
-    "退休", "省錢", "發票", "中獎", "運勢", "生肖"
+    "退休", "省錢", "發票", "中獎", "運勢", "生肖",
+    "飼主", "寵物", "鄰居", "社會", "車禍", "命案", "外送", "勞基法"
 ]
 
 def clean_old_news():
     try:
         conn = sqlite3.connect("news.db")
         cursor = conn.cursor()
-        cutoff_date = (datetime.datetime.now() - datetime.timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+        cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
         conn.commit()
         conn.close()
@@ -66,9 +70,10 @@ def init_db():
 def parse_pub_date(published_str):
     try:
         dt = parsedate_to_datetime(published_str)
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        dt_taipei = dt.astimezone(TZ_TAIPEI)
+        return dt_taipei.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.datetime.now(TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
@@ -77,7 +82,7 @@ def generate_dynamic_queries():
         try:
             fallback_url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
             feed = feedparser.parse(fallback_url)
-            realtime_headlines = [entry.title for entry in feed.entries[:25]]
+            realtime_headlines = [entry.title for entry in feed.entries[:30]]
             headlines_text = "\n".join(realtime_headlines) if realtime_headlines else "近期台股科技、半導體、政策與總經動態"
 
             client = Groq(api_key=api_key)
@@ -85,19 +90,14 @@ def generate_dynamic_queries():
             以下是今天從市場即時抓取的新聞標題：
             {headlines_text}
 
-            你是一個專業的台股操盤手。請從上述真實標題與以下 5 大核心維度中，綜合歸納出 3 個最能對應當前盤勢熱點的精確搜尋短字串：
-            1. 政策與預算紅利（政府重大採購、國防預算、法案或補貼）
-            2. 突發風險與變故（企業調查、訴訟、重訊或經營權變動）
-            3. 基本面拐點與大單（大單傳聞、併購案、財報超預期）
-            4. 總體經濟變數（通膨、就業、央行利率決議）
-            5. 供應鏈衝擊（斷鏈、短缺、原物料價格波動）
-
+            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「絕對與台股上市櫃公司、半導體供應鏈、政府重大產業政策、總體經濟或企業財報相關」的精確搜尋短字串。
+            絕對禁止挑選與社會新聞、地方民生、寵物、勞動法規（如外送法等無關股市者）無關的題材。
             請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
             """
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
+                temperature=0.2
             )
             text = response.choices[0].message.content.strip()
             lines = [line.strip() for line in text.split("\n") if line.strip()]
@@ -115,7 +115,7 @@ def generate_dynamic_queries():
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return "", "⚪ 低", "無", 0
+        return "", "⚪ 低", "", 0
         
     try:
         client = Groq(api_key=api_key)
@@ -125,8 +125,8 @@ def analyze_news_with_ai(title, source):
         新聞來源：{source}
 
         判斷標準：
-        - 若屬於一般理財、生活消費、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
-        - 若屬於 5 大核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
+        - 若屬於一般理財、生活消費、社會新聞、寵物、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
+        - 若屬於核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
 
         請嚴格依照下列格式回傳：
         摘要：[用一句話精準說明事件本質與市場影響]
@@ -140,25 +140,34 @@ def analyze_news_with_ai(title, source):
         )
         text = response.choices[0].message.content.strip()
         
-        summary, importance, impact_companies = "", "⚪ 低", "無"
+        summary, importance, impact_companies = "", "⚪ 低", ""
         for line in text.split("\n"):
             if "摘要：" in line:
                 summary = line.replace("摘要：", "").strip()
             elif "重要性：" in line:
                 importance = line.replace("重要性：", "").strip()
             elif "影響台股：" in line:
-                impact_companies = line.replace("影響台股：", "").strip()
+                val = line.replace("影響台股：", "").strip()
+                if val != "無":
+                    impact_companies = val
                 
         return summary, importance, impact_companies, 1
     except Exception as e:
         error_str = str(e)
         if "429" in error_str or "rate_limit" in error_str.lower():
-            # 1. 優先檢查標題是否自帶括號代號格式
+            # 【智慧過濾備援】：當 API 滿載時，嚴格檢查標題是否包含財經關鍵字
+            financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
+            has_finance_keyword = any(term in title for term in financial_terms)
+            
+            # 若連基本財經關鍵字都沒有（例如社會新聞、寵物新聞），直接判定為低價值並捨棄
+            if not has_finance_keyword:
+                return "", "⚪ 低", "", 0
+
+            # 優先檢查標題是否自帶括號代號格式
             match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
             if match:
                 matched = f"{match.group(1)}({match.group(2)})"
             else:
-                # 2. 若未帶代號，透過擴充的對應字典進行名稱比對自動補上代號
                 stock_map = {
                     "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
                     "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
@@ -167,14 +176,14 @@ def analyze_news_with_ai(title, source):
                     "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
                     "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
                 }
-                matched = "無"
+                matched = ""
                 for k, v in stock_map.items():
                     if k in title:
                         matched = v
                         break
             return "", "🟡 中", matched, 0
             
-        return "", "⚪ 低", "無", 0
+        return "", "⚪ 低", "", 0
 
 def fetch_and_store_news():
     init_db()
@@ -213,7 +222,7 @@ def fetch_and_store_news():
                 
             summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            if importance == "⚪ 低" or (impact_companies == "無" and is_ai == 1):
+            if importance == "⚪ 低":
                 continue
                 
             try:
