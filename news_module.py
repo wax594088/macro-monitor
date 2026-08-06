@@ -41,7 +41,7 @@ def generate_dynamic_queries():
         請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
         """
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=prompt
         )
         lines = [line.strip() for line in response.text.strip().split("\n") if line.strip()]
@@ -72,7 +72,7 @@ def analyze_news_with_ai(title, source):
         影響台股：[列出受此事件影響的台股公司名稱與代號，例如：台積電(2330)。若非高價值事件或無關台股請填「無」]
         """
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=prompt
         )
         text = response.text.strip()
