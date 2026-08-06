@@ -4,6 +4,8 @@ import pandas as pd
 
 # 導入拆分出去的總經模組
 import macro_module as mm
+# 導入拆分出去的新聞市況彙整模組
+import news_module as nm
 
 # 頁面基礎設定：預設收起側邊欄
 st.set_page_config(
