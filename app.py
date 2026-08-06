@@ -263,11 +263,14 @@ with tab_home:
 with tab_news:
     st.markdown("#### 📰 財經事件驅動情資解析")
     
-    # 資料手動更新按鈕
     if st.button("🚀 執行最新高價值情資抓取"):
         with st.spinner("正在聯絡 AI 解析政策、訂單與總經事件，請稍候..."):
-            count = nm.fetch_and_store_news()
+            count, logs = nm.fetch_and_store_news()
             st.success(f"抓取與解析完成，成功新增 {count} 筆高價值情報！")
+            
+            with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=True):
+                for log in logs:
+                    st.write(log)
     
     # 篩選控制列
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
