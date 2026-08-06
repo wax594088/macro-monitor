@@ -325,9 +325,11 @@ with tab_news:
                 else:
                     st.markdown("💡 **核心摘要**：[AI額度已滿，無摘要]")
                 
-                # 固定顯示對應台股標籤，若無則保持空白
-                display_stock = impact_companies if impact_companies else ""
-                st.markdown(f"🏷️ **對應台股**：`{display_stock}`")
+                # 顯示對應台股標籤：有資料則顯示代號外框，無資料則保持純空白不帶引號
+                if impact_companies and impact_companies.strip():
+                    st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
+                else:
+                    st.markdown("🏷️ **對應台股**：")
                 
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -336,5 +338,6 @@ with tab_news:
                     st.caption(f"時間：{date}")
                 with c3:
                     st.caption(f"曝光總數：{report_count} 篇")
+                    
 with tab_analysis:
     st.write("產業鏈分析模組建置中...")
