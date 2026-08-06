@@ -263,6 +263,13 @@ with tab_home:
 with tab_news:
     st.markdown("#### 📰 新聞市況彙整 (無 AI 測試版)")
     
+    # 如果資料庫完全沒有資料，自動執行一次抓取
+    if not nm.get_news_from_db():
+        with st.spinner("正在初始化並抓取最新財經新聞，請稍候..."):
+            nm.fetch_and_store_news("台股")
+            nm.fetch_and_store_news("半導體")
+            nm.fetch_and_store_news("證券")
+    
     # 搜尋輸入框
     search_query = st.text_input("搜尋關鍵字（例如：台積電、半導體）", "")
     
@@ -270,7 +277,7 @@ with tab_news:
     news_rows = nm.get_news_from_db(search_query)
     
     if not news_rows:
-        st.info("目前資料庫中沒有相關新聞，請先確認資料庫或調整搜尋條件。")
+        st.info("目前資料庫中沒有相關新聞，請嘗試輸入其他搜尋條件。")
     else:
         st.write(f"共找到 **{len(news_rows)}** 筆新聞紀錄：")
         
