@@ -256,14 +256,14 @@ with tab_home:
 
 
 with tab_news:
-    # 頂部標題與按鈕區塊（按鈕靠右對齊）
-    col_t, col_b1, col_b2 = st.columns([2, 1, 1])
+    # 調整欄位比例以確保按鈕不分行，寬度依文字長度自動調整
+    col_t, col_b1, col_b2 = st.columns([2.0, 1.2, 1.2])
     with col_t:
         st.markdown("#### 📰 財經事件驅動情資解析")
     with col_b1:
-        fetch_clicked = st.button("🚀 執行最新高價值情資抓取", use_container_width=True)
+        fetch_clicked = st.button("🚀 執行最新高價值情資抓取")
     with col_b2:
-        clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫", use_container_width=True)
+        clear_clicked = st.button("🗑️ 清除所有新聞並重置資料庫")
     
     if clear_clicked:
         if nm.clear_all_news():
@@ -278,14 +278,13 @@ with tab_news:
             count, logs = nm.fetch_and_store_news()
             st.success(f"抓取與解析完成！執行時間：{execution_time}，成功新增 {count} 筆高價值情報！")
             
-            # 診斷記錄預設收起 (expanded=False)
             with st.expander("🔍 點此查看詳細執行診斷記錄（排錯用）", expanded=False):
                 for log in logs:
                     st.write(log)
     
     st.divider()
 
-    # 篩選控制列（保持排序與篩選狀態）
+    # 篩選控制列
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
@@ -312,18 +311,19 @@ with tab_news:
             date, title, source, url, summary, importance, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
-                # 僅在經 AI 智慧辨識過時才顯示標籤
+                # 只有在真的經過 AI 解析過才顯示 [本新聞經過AI解析]，未經過則完全隱藏
                 if is_ai == 1:
-                    st.markdown("**[🤖 AI 智慧操盤手深度解析辨識]**")
+                    st.markdown("**[本新聞經過AI解析]**")
                 
-                # 標題字體適度縮小與排版
                 st.markdown(f"##### {importance or '⚪'} [{title}]({url})")
                 
-                # 僅在經 AI 辨識且有摘要內容時顯示核心摘要
+                # 有 AI 解析才顯示內容摘要，沒經過 AI 就顯示 [AI額度已滿，無摘要]
                 if is_ai == 1 and summary:
                     st.markdown(f"💡 **核心摘要**：{summary}")
+                else:
+                    st.markdown("💡 **核心摘要**：[AI額度已滿，無摘要]")
                 
-                # 僅在明確對應到公司代號（包含括號）時才顯示對應台股
+                # 除了對應的公司名跟代號（包含括號與代碼），其他不顯示
                 if impact_companies and impact_companies != "無" and "(" in impact_companies and ")" in impact_companies:
                     st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
                 
