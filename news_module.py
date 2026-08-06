@@ -55,7 +55,6 @@ def init_db():
             is_ai INTEGER DEFAULT 1
         )
     """)
-    # 相容舊資料庫自動補欄位
     try:
         cursor.execute("ALTER TABLE news ADD COLUMN is_ai INTEGER DEFAULT 1")
     except sqlite3.OperationalError:
@@ -164,7 +163,6 @@ def analyze_news_with_ai(title, source):
                 if k in title:
                     matched = v
                     break
-            # 沒經過 AI 解析時，is_ai 設為 0，summary 留空以隱藏摘要
             return "", "🟡 中", matched, 0
             
         return "", "⚪ 低", "無", 0
