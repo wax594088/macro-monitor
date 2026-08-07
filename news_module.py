@@ -239,11 +239,11 @@ def init_db():
         )
     """)
     
-    # 自動檢查並補上舊版資料庫可能缺少的 category 欄位
-    cursor.execute("PRAGMA table_info(news)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "category" not in columns:
+    # 安全地自動檢查並補上舊版資料庫可能缺少的 category 欄位（加上 try-except 避免併發或重複新增報錯）
+    try:
         cursor.execute("ALTER TABLE news ADD COLUMN category TEXT DEFAULT '產業'")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -372,8 +372,8 @@ def fallback_rule_analysis(title):
     matched_stock = extract_stocks_by_rules(title)
     return "", "🟡", "產業", matched_stock, 0
 
-def process_single_news(entry, media_name, cursor, conn):
-    """單篇新聞處理工作函數（供多執行緒平行調用）"""
+def process_single_news(entry, media_name):
+    """單篇新聞處理工作函數（多執行緒各自建立獨立資料庫連線，確保執行緒安全）"""
     title = entry.title
     url = clean_url_params(entry.link)
     source = entry.get('source', {}).get('title', media_name)
@@ -394,29 +394,33 @@ def process_single_news(entry, media_name, cursor, conn):
     if "cnyes.com" in url and "/news/id/" not in url:
         return 0
         
-    # 4. 網址重複跳過
-    cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-    if cursor.fetchone():
-        return 0
+    # 建立該執行緒專屬的資料庫連線
+    conn = sqlite3.connect("news.db", timeout=30)
+    cursor = conn.cursor()
 
-    # 5. 標題完全一致比對，重複更新發布時間與曝光數
-    if clean_t and len(clean_t) >= 6:
-        cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
-        existing = cursor.fetchone()
-        if existing:
-            news_id = existing[0]
-            cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
-            conn.commit()
-            return 0
-        
-    # 6. AI 或規則解析
-    summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
-    
-    # 7. 剔除低價值新聞
-    if importance == "⚪":
-        return 0
-        
     try:
+        # 4. 網址重複跳過
+        cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
+        if cursor.fetchone():
+            return 0
+
+        # 5. 標題完全一致比對，重複更新發布時間與曝光數
+        if clean_t and len(clean_t) >= 6:
+            cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
+            existing = cursor.fetchone()
+            if existing:
+                news_id = existing[0]
+                cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
+                conn.commit()
+                return 0
+            
+        # 6. AI 或規則解析
+        summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
+        
+        # 7. 剔除低價值新聞
+        if importance == "⚪":
+            return 0
+            
         cursor.execute("""
             INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
@@ -425,16 +429,14 @@ def process_single_news(entry, media_name, cursor, conn):
         return 1
     except Exception:
         return 0
+    finally:
+        conn.close()
 
 def fetch_and_store_news():
     init_db()
     logs = []
     
-    conn = sqlite3.connect("news.db", timeout=30)
-    cursor = conn.cursor()
-    added_count = 0
     total_fetched = 0
-    
     media_targets = [
         ("工商時報", "site:ctee.com.tw"),
         ("經濟日報", "site:edn.udn.com"),
@@ -455,16 +457,16 @@ def fetch_and_store_news():
         for entry in feed.entries:
             all_tasks.append((entry, media_name))
             
+    added_count = 0
     # 使用 ThreadPoolExecutor 平行化處理 AI 解析與寫入（設定 5 個執行緒加速）
     with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_single_news, entry, media_name, cursor, conn) for entry, media_name in all_tasks]
+        futures = [executor.submit(process_single_news, entry, media_name) for entry, media_name in all_tasks]
         for future in as_completed(futures):
             try:
                 added_count += future.result()
             except Exception:
                 pass
                 
-    conn.close()
     logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆（已透過多執行緒加速）。")
     return added_count, logs
 
