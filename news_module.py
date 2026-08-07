@@ -484,7 +484,7 @@ def fetch_and_store_news():
                 summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
                 
                 if is_ai == 1 and not AI_CIRCUIT_BROKEN:
-                    time.sleep(0.2)
+                    time.sleep(0.5)
                     
                 if importance == "⚪":
                     continue
