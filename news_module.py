@@ -201,31 +201,40 @@ def extract_stocks_by_rules(title):
     return res_str
 
 def init_db():
-    """初始化資料庫並設定併發 WAL 模式"""
-    with sqlite3.connect("news.db", timeout=20) as conn:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS news (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT UNIQUE,
-                title TEXT,
-                source TEXT,
-                published_date TEXT,
-                summary TEXT,
-                importance TEXT,
-                category TEXT,
-                impact_companies TEXT,
-                report_count INTEGER DEFAULT 1,
-                is_ai INTEGER DEFAULT 1
-            )
-        """)
-        conn.commit()
+    """初始化資料庫（防範 PRAGMA 獨占鎖與 Streamlit 容器檔案系統報錯）"""
+    try:
+        with sqlite3.connect("news.db", timeout=20.0) as conn:
+            cursor = conn.cursor()
+            
+            # 容錯機制：嘗試開啟 WAL 模式，若受限於容器權限或鎖定則自動忽略降級
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL;")
+            except sqlite3.OperationalError:
+                pass
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS news (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT UNIQUE,
+                    title TEXT,
+                    source TEXT,
+                    published_date TEXT,
+                    summary TEXT,
+                    importance TEXT,
+                    category TEXT,
+                    impact_companies TEXT,
+                    report_count INTEGER DEFAULT 1,
+                    is_ai INTEGER DEFAULT 1
+                )
+            """)
+            conn.commit()
+    except Exception:
+        pass
     clean_old_news()
 
 def clean_old_news():
     try:
-        with sqlite3.connect("news.db", timeout=20) as conn:
+        with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
             cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
@@ -235,7 +244,7 @@ def clean_old_news():
 
 def clear_all_news():
     try:
-        with sqlite3.connect("news.db", timeout=20) as conn:
+        with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM news")
             conn.commit()
@@ -254,7 +263,7 @@ def parse_pub_date(published_str):
 def clean_title_for_comparison(title):
     cleaned = re.sub(r' - [^-]+$', '', title)
     cleaned = re.sub(r'^[【《\[\(][^】》\]\)]+[】》\]\)]', '', cleaned)
-    cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情|鉅亨速報|Factset\s*最新調查\s*[:：]?)[／/！!：:\-\s]*', '', cleaned)
+    cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情|鋸亨速報|Factset\s*最新調查\s*[:：]?)[／/！!：:\-\s]*', '', cleaned)
     cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', cleaned)
     return cleaned
 
@@ -400,7 +409,7 @@ def fetch_and_store_news():
         ("鋸亨網", "site:cnyes.com")
     ]
     
-    with sqlite3.connect("news.db", timeout=20) as conn:
+    with sqlite3.connect("news.db", timeout=20.0) as conn:
         cursor = conn.cursor()
         
         for media_name, media_site in media_targets:
@@ -441,6 +450,7 @@ def fetch_and_store_news():
                     if existing:
                         news_id = existing[0]
                         cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
+                        conn.commit()
                         continue
                     
                 summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
@@ -468,9 +478,7 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
-    """安全讀取新聞資料庫紀錄"""
-    init_db()
-    
+    """純讀取新聞資料庫，避免查詢時觸發寫入鎖定"""
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
@@ -490,9 +498,15 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
     sql += " LIMIT ?"
     params.append(limit)
     
-    with sqlite3.connect("news.db", timeout=20) as conn:
-        cursor = conn.cursor()
-        cursor.execute(sql, params)
-        rows = cursor.fetchall()
-        
-    return rows
+    try:
+        with sqlite3.connect("news.db", timeout=20.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+    except sqlite3.OperationalError:
+        # 若資料表完全不存在（首次部署），才初始化並重試
+        init_db()
+        with sqlite3.connect("news.db", timeout=20.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.fetchall()
