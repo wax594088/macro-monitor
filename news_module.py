@@ -5,13 +5,11 @@ import os
 import re
 import json
 import time
-import requests
 from groq import Groq
-import google.generativeai as genai
 from email.utils import parsedate_to_datetime
 import datetime
 
-# 動態匯入 Google Gemini，未安裝時自動停用該備援，不影響系統運作
+# 動態檢測 Gemini SDK 是否安裝，未安裝亦不影響系統運作
 try:
     import google.generativeai as genai
     HAS_GEMINI_SDK = True
@@ -21,6 +19,7 @@ except ImportError:
 # 強制設定台灣台北時區 (UTC+8)
 TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 
+# 1. 垃圾新聞黑名單
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
@@ -30,28 +29,112 @@ EXCLUDE_KEYWORDS = [
     "飼主", "寵物", "鄰居", "社會", "車禍", "命案", "外送", "勞基法"
 ]
 
+# 2. 無 AI 備援模式下的實質基本面與催化劑觸發詞
 CATALYST_TERMS = [
+    # 財務指標與營運績效
     "營收", "財報", "獲利", "毛利率", "單月EPS", "EPS", "轉虧為盈", "虧轉盈", 
     "大單", "訂單", "擴產", "庫存去化", "急單", "創高", "新高", "爆單", "停利",
+    "損益", "本益比", "淨值", "營收新高", "轉盈",
+    
+    # 資本動作與公司治理
     "重訊", "庫藏股", "併購", "減資", "增資", "現增", "配息", "殖利率", "除權息", 
     "申報轉讓", "法說會", "法說", "改選", "私募", "經營權", "買庫藏股", "CB", "公司債",
+    "轉換公司債", "違約", "股東會", "董事會", "子公司", "上市", "上櫃",
+    
+    # 籌碼動態與市場交易機制
     "外資", "投信", "三大法人", "法人", "主力", "買超", "賣超", "借券", "官股",
     "漲停", "跌停", "漲停板", "跌停板", "鎖死", "處置股", "注意股", "全額交割",
+    "融資", "融券", "追繳", "斷頭", "當沖", "鉅額交易", "違約交割", "暫停交易",
+    
+    # AI、半導體與先進製造
     "半導體", "晶圓代工", "先進封裝", "CoWoS", "CPO", "矽光子", "水冷", "散熱", 
-    "伺服器", "ASIC", "IP", "CCL", "PCB", "機器人", "算力", "晶片", "光通訊",
+    "液冷", "浸沒式", "伺服器", "ASIC", "IP", "CCL", "PCB", "機器人", "算力", 
+    "晶片", "光通訊", "HBM", "玻璃基板", "BBU", "備用電源", "AI PC", "AI 手機", 
+    "Edge AI", "邊緣運算", "靜電防護", "ESD", "廠務", "無塵室", "濕製程", "檢測分析",
+    "探針卡", "測試介面", "晶圓", "極紫光", "EUV",
+    
+    # 重電、綠能、軍工、低軌衛星與車用
     "強韌電網", "重電", "變壓器", "儲能", "綠電", "風電", "軍工", "無人機", 
-    "金管會", "央行", "升息", "降息", "禁令", "通膨", "Fed", "關稅", "制裁"
+    "國防", "航太", "低軌衛星", "第三代半導體", "碳化矽", "SiC", "氮化鎵", "GaN",
+    "軸承", "折疊機", "Wi-Fi 7", "網通", "車用半導體", "充電樁", "電動車", "車用",
+    
+    # 生技與醫療
+    "新藥", "藥證", "臨床", "CDMO", "醫療", "生技",
+    
+    # 總體經濟與國際政經
+    "金管會", "央行", "升息", "降息", "禁令", "通膨", "Fed", "關稅", "制裁",
+    "CPI", "PPI", "PCE", "NFP", "非農", "美股", "台幣", "匯率", "景氣燈號",
+    "關稅壁壘", "聯準會"
 ]
 
+# 3. 無 AI 備援模式下的台股重點對照表
 STOCKS_MAP = {
-    "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)",
-    "聯發科": "聯發科(2454)", "世芯": "世芯-KY(3661)", "創意": "創意(3443)",
+    # 晶圓代工 / 封測 / 設備 / 廠務
+    "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)", "世界": "世界(5347)",
+    "日月光投控": "日月光投控(3711)", "日月光": "日月光投控(3711)", "京元電子": "京元電子(2449)",
+    "萬潤": "萬潤(6187)", "弘塑": "弘塑(3131)", "辛耘": "辛耘(3583)", "家登": "家登(3680)",
+    "精測": "精測(6510)", "旺矽": "旺矽(6223)", "穎崴": "穎崴(6515)", "漢唐": "漢唐(2404)",
+    "聖暉": "聖暉*(5536)", "亞翔": "亞翔(6139)", "帆宣": "帆宣(6196)",
+
+    # IC 設計 / IP 矽智財
+    "聯發科": "聯發科(2454)", "世芯": "世芯-KY(3661)", "世芯-KY": "世芯-KY(3661)",
+    "創意": "創意(3443)", "力旺": "力旺(3529)", "瑞昱": "瑞昱(2379)", "聯詠": "聯詠(3034)",
+    "祥碩": "祥碩(5269)", "信驊": "信驊(5274)", "威盛": "威盛(2388)", "神盾": "神盾(6462)",
+    "安國": "安國(8054)", "晶心科": "晶心科(6533)", "群聯": "群聯(8299)", "巨有科技": "巨有科技(8227)",
+    "M31": "M31(6643)", "圓剛": "圓剛(2417)", "愛普": "愛普*(6531)",
+
+    # AI 伺服器 / 代工大廠 / 組裝
     "鴻海": "鴻海(2317)", "廣達": "廣達(2382)", "緯創": "緯創(3231)", "緯穎": "緯穎(6669)",
-    "奇鋐": "奇鋐(3017)", "雙鴻": "雙鴻(3324)", "健策": "健策(3653)", "台達電": "台達電(2308)",
+    "英業達": "英業達(2356)", "仁寶": "仁寶(2324)", "和碩": "和碩(4938)", "技嘉": "技嘉(2376)",
+    "微星": "微星(2377)", "神達": "神達(3706)", "華碩": "華碩(2357)", "宏碁": "宏碁(2353)",
+    "金寶": "金寶(2312)", "光寶科": "光寶科(2301)",
+
+    # 散熱 / 機殼 / 電源 / BBU / 折疊機
+    "奇鋐": "奇鋐(3017)", "雙鴻": "雙鴻(3324)", "健策": "健策(3653)", "高力": "高力(8996)",
+    "台達電": "台達電(2308)", "勤誠": "勤誠(8210)", "AES-KY": "AES-KY(6781)", "順達": "順達(3211)",
+    "新普": "新普(6121)", "晟銘電": "晟銘電(3013)", "建準": "建準(2421)", "富世達": "富世達(6805)",
+    "新日興": "新日興(3376)",
+
+    # 重電 / 綠能 / 線纜 / 儲能
     "華城": "華城(1519)", "士電": "士電(1503)", "中興電": "中興電(1513)", "亞力": "亞力(1514)",
-    "雷虎": "雷虎(8033)", "漢翔": "漢翔(2634)", "所羅門": "所羅門(2359)", "昆盈": "昆盈(2365)",
-    "長榮": "長榮(2603)", "陽明": "陽明(2609)", "萬海": "萬海(2615)",
-    "富邦金": "富邦金(2881)", "國泰金": "國泰金(2882)", "中信金": "中信金(2891)"
+    "大亞": "大亞(1609)", "雲豹能源": "雲豹能源(6869)", "森崴能源": "森崴能源(6806)",
+    "泓德能源": "泓德能源(6873)", "東元": "東元(1504)", "台汽電": "台汽電(8926)",
+
+    # 軍工 / 航太 / 低軌衛星
+    "雷虎": "雷虎(8033)", "漢翔": "漢翔(2634)", "龍德造船": "龍德造船(6753)",
+    "長榮航太": "長榮航太(2645)", "千附精密": "千附精密(6829)", "昇達科": "昇達科(3491)",
+    "事欣科": "事欣科(4916)", "全訊": "全訊(5222)", "寶一": "寶一(8222)",
+
+    # 機器人 / 自動化 / 矽光子 / 網通
+    "所羅門": "所羅門(2359)", "昆盈": "昆盈(2365)", "羅昇": "羅昇(8374)", "盟立": "盟立(2464)",
+    "上銀": "上銀(2049)", "川湖": "川湖(2059)", "聯鈞": "聯鈞(3450)", "華星光": "華星光(4979)",
+    "波若威": "波若威(3163)", "前鼎": "前鼎(4908)", "智邦": "智邦(2345)", "啟碁": "啟碁(6285)",
+    "中磊": "中磊(5388)", "正文": "正文(4906)",
+
+    # PCB / CCL / 被動元件
+    "台光電": "台光電(2383)", "台燿": "台燿(6274)", "金像電": "金像電(2368)", "華通": "華通(2313)",
+    "健鼎": "健鼎(3044)", "欣興": "欣興(3037)", "景碩": "景碩(3189)", "南電": "南電(8046)",
+    "國巨": "國巨(2327)", "華新科": "華新科(2492)", "聯茂": "聯茂(6213)",
+
+    # 光學 / 車用
+    "大立光": "大立光(3008)", "玉晶光": "玉晶光(3406)", "亞光": "亞光(3019)", "先進光": "先進光(3362)",
+    "胡連": "胡連(6279)", "同致": "同致(3552)",
+
+    # 生技醫療
+    "藥華藥": "藥華藥(6446)", "美時": "美時(1795)", "保瑞": "保瑞(6472)", "科懋": "科懋(6496)",
+    "寶島科": "寶島科(5312)", "合一": "合一(4743)", "中天": "中天(4128)",
+
+    # 航運 / 傳統產業
+    "長榮": "長榮(2603)", "陽明": "陽明(2609)", "萬海": "萬海(2615)", "華航": "華航(2610)",
+    "長榮航": "長榮航(2618)", "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
+    "中鋼": "中鋼(2002)", "台泥": "台泥(1101)", "亞泥": "亞泥(1102)",
+
+    # 金融權值
+    "富邦金": "富邦金(2881)", "國泰金": "國泰金(2882)", "中信金": "中信金(2891)",
+    "兆豐金": "兆豐金(2886)", "玉山金": "玉山金(2884)", "元大金": "元大金(2885)",
+    "台新金": "台新金(2887)", "永豐金": "永豐金(2890)", "第一金": "第一金(2892)",
+    "華南金": "華南金(2880)", "開發金": "凱基金(2883)", "凱基金": "凱基金(2883)",
+    "合庫金": "合庫金(5880)", "上海商銀": "上海商銀(5876)"
 }
 
 def clean_old_news():
@@ -126,7 +209,7 @@ def parse_ai_response(text):
     return summary, importance, impact_companies, 1
 
 def analyze_news_with_ai(title, source):
-    """四重 AI 引擎自動接力備援"""
+    """純免費 AI 接力備援流：Groq (70B) -> Gemini Flash -> Groq (8B) -> 靜態規則"""
     prompt = f"""
     你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
     新聞標題：{title}
@@ -144,9 +227,8 @@ def analyze_news_with_ai(title, source):
     
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
 
-    # 1. Groq (70B)
+    # 1. 第一順位：Groq (llama-3.3-70b-versatile)
     if groq_key:
         try:
             client = Groq(api_key=groq_key)
@@ -159,7 +241,7 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 2. Google Gemini (1.5 Flash)
+    # 2. 第二順位：Google Gemini (gemini-1.5-flash)
     if gemini_key and HAS_GEMINI_SDK:
         try:
             genai.configure(api_key=gemini_key)
@@ -169,26 +251,7 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 3. DeepSeek API
-    if deepseek_key:
-        try:
-            headers = {
-                "Authorization": f"Bearer {deepseek_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
-            }
-            res = requests.post("https://api.deepseek.com/chat/completions", json=payload, headers=headers, timeout=10)
-            if res.status_code == 200:
-                content = res.json()['choices'][0]['message']['content']
-                return parse_ai_response(content.strip())
-        except Exception:
-            pass
-
-    # 4. Groq 輕量模型 (8B)
+    # 3. 第三順位：Groq 輕量模型 (llama-3.1-8b-instant)
     if groq_key:
         try:
             client = Groq(api_key=groq_key)
@@ -201,7 +264,7 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 5. 純靜態規則庫降級備援
+    # 4. 第四順位：純靜態規則庫備援
     return fallback_rule_analysis(title)
 
 def fallback_rule_analysis(title):
@@ -232,59 +295,73 @@ def fetch_and_store_news():
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     added_count = 0
+    total_fetched = 0
     
-    media_filter = "site:ctee.com.tw OR site:edn.udn.com OR site:cnyes.com"
-    query_with_time = f"({media_filter}) when:3d"
-    encoded_query = urllib.parse.quote(query_with_time)
-    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    # 將三大媒體拆解為獨立檢索目標，避免 Google RSS 布林語法失效
+    media_targets = [
+        ("工商時報", "site:ctee.com.tw"),
+        ("經濟日報", "site:edn.udn.com"),
+        ("鉅亨網", "site:cnyes.com")
+    ]
     
-    feed = feedparser.parse(rss_url)
-    total_fetched = len(feed.entries)
-    logs.append(f"【檢索模式】三大專業財經媒體直抓（近三天原始新聞共 {total_fetched} 篇）")
-    
-    for entry in feed.entries:
-        title = entry.title
-        url = entry.link
-        source = entry.get('source', {}).get('title', '未知來源')
-        raw_published = entry.get('published', '')
-        published = parse_pub_date(raw_published)
+    for media_name, media_site in media_targets:
+        query_with_time = f"{media_site} when:3d"
+        encoded_query = urllib.parse.quote(query_with_time)
+        rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         
-        if any(ex in title for ex in EXCLUDE_KEYWORDS):
-            continue
+        feed = feedparser.parse(rss_url)
+        site_fetched = len(feed.entries)
+        total_fetched += site_fetched
+        logs.append(f"【檢索】{media_name}（近三天抓取到 {site_fetched} 篇原始新聞）")
+        
+        for entry in feed.entries:
+            title = entry.title
+            url = entry.link
+            source = entry.get('source', {}).get('title', media_name)
+            raw_published = entry.get('published', '')
+            published = parse_pub_date(raw_published)
             
-        cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-        if cursor.fetchone():
-            continue
-
-        core_keyword = clean_title_for_comparison(title)
-        if core_keyword and len(core_keyword) >= 4:
-            cursor.execute("SELECT id FROM news WHERE title LIKE ?", (f"%{core_keyword}%",))
-            existing = cursor.fetchone()
-            if existing:
-                news_id = existing[0]
-                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
+            # 1. 垃圾關鍵字黑名單過濾
+            if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
+                
+            # 2. 網址完全相同跳過
+            cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
+            if cursor.fetchone():
+                continue
+
+            # 3. 標題核心字查重，重複議題自動累加曝光數 (report_count + 1)
+            core_keyword = clean_title_for_comparison(title)
+            if core_keyword and len(core_keyword) >= 4:
+                cursor.execute("SELECT id FROM news WHERE title LIKE ?", (f"%{core_keyword}%",))
+                existing = cursor.fetchone()
+                if existing:
+                    news_id = existing[0]
+                    cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
+                    continue
+                
+            # 4. 呼叫 AI 或規則庫解析新聞
+            summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-        summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
-        
-        # 間隔 0.5 秒流速控制，避免瞬間連續請求觸發 RPM 限制
-        time.sleep(0.5)
-        
-        if importance == "⚪ 低":
-            continue
+            # 每篇加入 0.5 秒流速控制，避免連續發送觸發限流
+            time.sleep(0.5)
             
-        try:
-            cursor.execute("""
-                INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-            """, (url, title, source, published, summary, importance, impact_companies, is_ai))
-            added_count += 1
-        except Exception as e:
-            logs.append(f"寫入資料庫錯誤: {e}")
-            
+            # 5. 剔除低價值新聞
+            if importance == "⚪ 低":
+                continue
+                
+            try:
+                cursor.execute("""
+                    INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (url, title, source, published, summary, importance, impact_companies, is_ai))
+                added_count += 1
+            except Exception as e:
+                logs.append(f"寫入資料庫錯誤: {e}")
+                
     conn.commit()
     conn.close()
-    logs.append(f"【執行結果】成功寫入近三日高價值情報 {added_count} 筆。")
+    logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by="時間新到舊"):
