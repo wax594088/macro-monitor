@@ -75,11 +75,32 @@ def parse_pub_date(published_str):
     except Exception:
         return datetime.datetime.now(TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
-def clean_title_for_comparison(title):
-    """去除新聞標題尾端的媒體名稱與符號，用於比對是否為同新聞議題"""
-    cleaned = re.sub(r' - [^-]+$', '', title)
-    cleaned = re.sub(r'[\s\s\t\n\r]', '', cleaned)
-    return cleaned[:15]  # 取前15個關鍵字進行核心特徵比對
+def clean_title_for_matching(title):
+    """去除媒體名稱、括號與標點符號，保留核心文字"""
+    title = re.sub(r' - [^-]+$', '', title)
+    title = re.sub(r'(快訊／|注意！|【[^】]+】|（[^）]+）|\([^\)]+\))', '', title)
+    title = re.sub(r'[^\w\u4e00-\u9fa5]', '', title)
+    return title
+
+def is_similar_news(title1, title2, threshold=0.25):
+    """使用 2-Gram 雙字組特徵計算兩標題的語意相似度"""
+    t1 = clean_title_for_matching(title1)
+    t2 = clean_title_for_matching(title2)
+    
+    if not t1 or not t2:
+        return False
+        
+    bg1 = set([t1[i:i+2] for i in range(len(t1)-1)])
+    bg2 = set([t2[i:i+2] for i in range(len(t2)-1)])
+    
+    if not bg1 or not bg2:
+        return False
+        
+    intersection = bg1.intersection(bg2)
+    union = bg1.union(bg2)
+    similarity = len(intersection) / len(union)
+    
+    return similarity >= threshold
 
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
@@ -222,19 +243,25 @@ def fetch_and_store_news():
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
                 
-            # 1. 檢查完全相同的網址
+            # 1. 完全相同網址：視為重複抓取並更新曝光數
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-            if cursor.fetchone():
+            url_match = cursor.fetchone()
+            if url_match:
+                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (url_match[0],))
                 continue
 
-            # 2. 標題相近查重與曝光次數（report_count）累加
-            core_title_keyword = clean_title_for_comparison(title)
-            cursor.execute("SELECT id, report_count FROM news WHERE title LIKE ?", (f"%{core_title_keyword}%",))
-            existing = cursor.fetchone()
+            # 2. 標題語意相似度比對：跨平台同議題新聞自動累加曝光數
+            cursor.execute("SELECT id, title FROM news")
+            all_existing_news = cursor.fetchall()
             
-            if existing:
-                news_id, current_count = existing
-                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
+            is_duplicate_event = False
+            for news_id, existing_title in all_existing_news:
+                if is_similar_news(title, existing_title):
+                    cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
+                    is_duplicate_event = True
+                    break
+            
+            if is_duplicate_event:
                 continue
                 
             # 3. 若為新議題，則解析並寫入資料庫
