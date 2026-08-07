@@ -34,7 +34,7 @@ EXCLUDE_KEYWORDS = [
     "專頁", "頻道"
 ]
 
-# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（禁止純文字比對，僅允許標題帶有股票代號時匹配）
+# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（已加入「介面」防護）
 AMBIGUOUS_STOCK_NAMES = {
     # 數量、量詞與程度動詞類
     "大量", "精測", "極機", "創威", "飛銳", "波若威", "廣宇", "廣達", "宏達",
@@ -153,31 +153,26 @@ def load_all_taiwan_stocks():
 
 def extract_stocks_by_rules(title):
     """由 Python 主導比對全台股清單，優先比對長字串並剔除子字串重疊與通用詞"""
-    # 1. 裁切標題後方的分類與媒體名稱（如 - 日報 - 工商時報）
     pure_title = re.sub(r'\s*-\s*.*$', '', title).strip()
     
     stocks_map = load_all_taiwan_stocks()
     matched = []
-    occupied_spans = []  # 記錄已被較長名稱佔用的字元區間
+    occupied_spans = []
 
-    # 2. 優先比對標題內已包含括號與代號之格式（例：中華資安(7765)）
     for match in re.finditer(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', pure_title):
         name, code = match.group(1), match.group(2)
         matched.append(f"{name}({code})")
         occupied_spans.append((match.start(), match.end()))
 
-    # 3. 簡稱別名匹配（例：標題出現「台積」自動識別為台積電(2330)）
     for alias, full_str in ALIAS_STOCK_MAP.items():
         if alias in pure_title and full_str not in matched:
             matched.append(full_str)
 
-    # 4. 按股票名稱長度「由長到短」排序，確保長字串優先比對
     sorted_stock_names = sorted(stocks_map.keys(), key=len, reverse=True)
 
     for name in sorted_stock_names:
         full_str = stocks_map[name]
         
-        # 跳過通用詞與技術術語（例：介面、材料）
         if name in AMBIGUOUS_STOCK_NAMES:
             continue
             
@@ -185,7 +180,6 @@ def extract_stocks_by_rules(title):
             for match in re.finditer(re.escape(name), pure_title):
                 start, end = match.start(), match.end()
                 
-                # 檢查是否與已被佔用之區域重疊
                 is_overlapping = any(
                     o_start <= start and end <= o_end 
                     for o_start, o_end in occupied_spans
@@ -198,7 +192,6 @@ def extract_stocks_by_rules(title):
 
     res_str = "、".join(matched) if matched else ""
     
-    # 5. 格式防護：若結果包含燈號或「無」字樣，直接清空
     if any(icon in res_str for icon in ["🔴", "🟡", "⚪", "⚫", "無"]):
         return ""
         
@@ -238,6 +231,7 @@ def init_db():
             published_date TEXT,
             summary TEXT,
             importance TEXT,
+            category TEXT,
             impact_companies TEXT,
             report_count INTEGER DEFAULT 1,
             is_ai INTEGER DEFAULT 1
@@ -269,8 +263,8 @@ def clean_url_params(url):
     return url.rstrip('?&')
 
 def parse_ai_response(text, title):
-    """精準清洗 AI 回傳，AI 僅負責重要性與摘要；台股個股由 Python 本地精準比對"""
-    summary, importance = "", "⚪"
+    """精準清洗 AI 回傳，包含 6 大核心類型解析"""
+    summary, importance, category = "", "⚪", "產業"
     for line in text.split("\n"):
         line_str = line.strip()
         if "摘要：" in line_str:
@@ -284,18 +278,23 @@ def parse_ai_response(text, title):
                 importance = "🟡"
             else:
                 importance = "⚪"
+        elif "類別：" in line_str:
+            val = line_str.replace("類別：", "").strip()
+            valid_cats = ["財報", "重訊", "國際", "指數", "產業", "總經"]
+            for cat in valid_cats:
+                if cat in val:
+                    category = cat
+                    break
 
-    # 由 Python 代替 AI 比對股票清單
     impact_companies = extract_stocks_by_rules(title)
     
-    # 防護攔截：若包含燈號符號（🔴、🟡、⚪、⚫）或「無」，直接清空為空字串
     if any(icon in impact_companies for icon in ["🔴", "🟡", "⚪", "⚫", "無"]):
         impact_companies = ""
 
-    return summary, importance, impact_companies, 1
+    return summary, importance, category, impact_companies, 1
 
 def analyze_news_with_ai(title, source):
-    """AI 只負責決定重要性與一句話摘要，不再對應台股個股"""
+    """AI 同步產出重要性、一句話摘要與 6 大類別標籤"""
     prompt = f"""
     你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
     新聞標題：{title}
@@ -305,9 +304,18 @@ def analyze_news_with_ai(title, source):
     - 若屬於一般理財、生活消費、社會新聞、寵物、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
     - 若屬於核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
 
+    類別選項（僅限填寫其中一項）：財報、重訊、國際、指數、產業、總經
+    - 財報：單月營收、季報、年報、EPS、獲利表現。
+    - 重訊：法說會、庫藏股、減資增資、併購、重大營運公告。
+    - 國際：美股動態、國際財經事件、海外大廠、地緣政治。
+    - 指數：大盤走勢、類股指數、盤中速報、法人籌碼。
+    - 產業：供應鏈、訂單、擴產、技術突破、新產品。
+    - 總經：央行利率、聯準會(Fed)、通膨數據(CPI/PPI)、政策。
+
     請嚴格依照下列格式回傳（嚴禁在欄位內填寫任何多餘的解釋或理由）：
     摘要：[僅填一句話說明事件本質]
     重要性：[僅填 🔴高、🟡中、或 ⚪低]
+    類別：[僅填 財報、重訊、國際、指數、產業、總經 其中一項]
     """
     
     groq_key = os.environ.get("GROQ_API_KEY")
@@ -351,10 +359,10 @@ def analyze_news_with_ai(title, source):
 def fallback_rule_analysis(title):
     has_catalyst = any(term in title for term in CATALYST_TERMS)
     if not has_catalyst:
-        return "", "⚪", "", 0
+        return "", "⚪", "產業", "", 0
 
     matched_stock = extract_stocks_by_rules(title)
-    return "", "🟡", matched_stock, 0
+    return "", "🟡", "產業", matched_stock, 0
 
 def fetch_and_store_news():
     init_db()
@@ -388,26 +396,21 @@ def fetch_and_store_news():
             raw_published = entry.get('published', '')
             published = parse_pub_date(raw_published)
             
-            # 1. 黑名單過濾
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
 
-            # 2. 攔截無效首頁標題
             clean_t = clean_title_for_comparison(title)
             invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
             if title.strip() in invalid_titles or len(clean_t) < 5:
                 continue
 
-            # 3. 網址無效路徑跳過
             if "cnyes.com" in url and "/news/id/" not in url:
                 continue
                 
-            # 4. 網址重複跳過
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
             if cursor.fetchone():
                 continue
 
-            # 5. 標題完全一致比對，重複更新發布時間
             if clean_t and len(clean_t) >= 6:
                 cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
                 existing = cursor.fetchone()
@@ -416,21 +419,18 @@ def fetch_and_store_news():
                     cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                     continue
                 
-            # 6. AI 或規則解析
-            summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
+            summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            # 7. 流速控制
             time.sleep(0.5)
             
-            # 8. 剔除低價值新聞
             if importance == "⚪":
                 continue
                 
             try:
                 cursor.execute("""
-                    INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """, (url, title, source, published, summary, importance, impact_companies, is_ai))
+                    INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (url, title, source, published, summary, importance, category, impact_companies, is_ai))
                 added_count += 1
             except Exception as e:
                 logs.append(f"寫入資料庫錯誤: {e}")
@@ -445,7 +445,7 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     
-    sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count, is_ai FROM news WHERE 1=1"
+    sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
     if search_query:
