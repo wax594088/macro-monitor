@@ -11,6 +11,13 @@ import google.generativeai as genai
 from email.utils import parsedate_to_datetime
 import datetime
 
+# 動態匯入 Google Gemini，未安裝時自動停用該備援，不影響系統運作
+try:
+    import google.generativeai as genai
+    HAS_GEMINI_SDK = True
+except ImportError:
+    HAS_GEMINI_SDK = False
+
 # 強制設定台灣台北時區 (UTC+8)
 TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 
@@ -153,7 +160,7 @@ def analyze_news_with_ai(title, source):
             pass
 
     # 2. Google Gemini (1.5 Flash)
-    if gemini_key:
+    if gemini_key and HAS_GEMINI_SDK:
         try:
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
