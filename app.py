@@ -36,7 +36,8 @@ if st.sidebar.button("🗑️ 清除所有新聞並重置資料庫"):
     else:
         st.sidebar.error("清除失敗，請檢查資料庫狀態。")
 
-tab_home, tab_news, tab_industry = st.tabs(["首頁", "新聞市況彙整", "產業鏈分析"])
+# 修正：正確宣告三個頁籤變數名稱與順序
+tab_home, tab_news, tab_analysis = st.tabs(["首頁", "新聞市況彙整", "產業鏈分析"])
 
 with tab_home:
     stlfsi_data = mm.get_fred_data("STLFSI4", 2.0, True, api_key)
@@ -268,7 +269,7 @@ with tab_news:
             st.success("資料庫已成功清空！")
             st.rerun()
         else:
-            st.error("清除失敗，請檢查資料庫狀態。")
+            st.sidebar.error("清除失敗，請檢查資料庫狀態。")
 
     if fetch_clicked:
         execution_time = datetime.datetime.now(nm.TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
@@ -286,7 +287,6 @@ with tab_news:
     
     st.divider()
 
-    # 調整欄位對齊：使用 padding-top 間距使核取方塊與搜尋框高度精準置中
     col_f1, col_f2, col_f3 = st.columns([2.2, 1.2, 1.2])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字", "")
@@ -317,7 +317,6 @@ with tab_news:
                 if is_ai == 1:
                     st.markdown("**[本新聞經過AI解析]**")
                 
-                # 去除燈號後面的「高/中/低」中文字，僅保留純圓點燈號
                 lamp_icon = (importance or "⚪").replace("高", "").replace("中", "").replace("低", "").strip()
                 st.markdown(f"{lamp_icon} [{title}]({url})")
                 
