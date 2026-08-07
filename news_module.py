@@ -522,8 +522,8 @@ def fetch_and_store_news():
     logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
     return added_count, logs
 
-def get_news_from_db(search_query="", limit=200, importance_filter=None, sort_by="時間新到舊"):
-    """安全讀取新聞資料庫（回傳對齊 app.py 的 10 個欄位，預設上限提升至 200 筆）"""
+def get_news_from_db(search_query="", limit=200, importance_filter=None, category_filter="全部", sort_by="時間新到舊"):
+    """安全讀取新聞資料庫（支援關鍵字、重要性、新聞類別篩選）"""
     init_db()
     
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
@@ -536,6 +536,10 @@ def get_news_from_db(search_query="", limit=200, importance_filter=None, sort_by
     if importance_filter:
         sql += " AND importance LIKE ?"
         params.append(f"%{importance_filter}%")
+
+    if category_filter and category_filter != "全部":
+        sql += " AND category LIKE ?"
+        params.append(f"%{category_filter}%")
         
     if sort_by == "重要性優先":
         sql += " ORDER BY CASE WHEN importance LIKE '%🔴%' THEN 1 WHEN importance LIKE '%🟡%' THEN 2 ELSE 3 END ASC, published_date DESC"
