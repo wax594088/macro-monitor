@@ -159,11 +159,9 @@ def analyze_news_with_ai(title, source):
             financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
             has_finance_keyword = any(term in title for term in financial_terms)
             
-            # 若連基本財經關鍵字都沒有（例如社會新聞、寵物新聞），直接判定為低價值並捨棄
             if not has_finance_keyword:
                 return "", "⚪ 低", "", 0
 
-            # 優先檢查標題是否自帶括號代號格式
             match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
             if match:
                 matched = f"{match.group(1)}({match.group(2)})"
@@ -198,13 +196,17 @@ def fetch_and_store_news():
     added_count = 0
     total_fetched = 0
     
+    # 鎖定三大專業財經媒體：工商時報、經濟日報、鉅亨網
+    media_filter = "site:ctee.com.tw OR site:edn.udn.com OR site:cnyes.com"
+    
     for q in target_queries:
-        query_with_time = f"{q} when:14d"
+        # 將專業媒體限制條件與查詢詞及時間區間結合
+        query_with_time = f"{q} ({media_filter}) when:14d"
         encoded_query = urllib.parse.quote(query_with_time)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         feed = feedparser.parse(rss_url)
         total_fetched += len(feed.entries)
-        logs.append(f"【步驟二】搜尋詞「{q} (近兩週)」抓取到原始新聞：{len(feed.entries)} 篇")
+        logs.append(f"【步驟二】搜尋詞「{q} (限定三大專業財經媒體, 近兩週)」抓取到原始新聞：{len(feed.entries)} 篇")
         
         for entry in feed.entries:
             title = entry.title
