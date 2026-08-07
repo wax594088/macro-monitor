@@ -34,17 +34,17 @@ EXCLUDE_KEYWORDS = [
     "專頁", "頻道"
 ]
 
-# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（含「介面」防護）
+# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（已加入「介面」防護）
 AMBIGUOUS_STOCK_NAMES = {
     # 數量、量詞與程度動詞類
-    "大量", "精測", "極機", "創威", "飛銳", "波若威", "廣宇", "廣達", "宏達",
+    "大量", "精測", "極機", "飛銳"
     # 抽象形容詞、技術術語與通用概念類
     "國產", "幸福", "大同", "大眾", "第一", "通用", "巨有", "正文", "威盛",
     "亞洲", "新光", "大亞", "高力", "金寶", "巨蛋", "統一", "富邦", "宏碁",
     "聯華", "東元", "中華", "台灣", "太平洋", "長榮", "萬海", "陽明", "佳醫",
     "介面", "材料", "應用", "控制", "系統", "軟體", "先進", "精技",
     # 媒體名稱、出版與高頻詞彙類
-    "時報", "商訊", "中央", "優買", "精業", "台亞", "台塑", "台化", "南亞"
+    "時報", "商訊", "中央", "優買", "精業"
 }
 
 # 3. 高頻權值股新聞簡稱對照表
@@ -237,12 +237,6 @@ def init_db():
             is_ai INTEGER DEFAULT 1
         )
     """)
-    
-    try:
-        cursor.execute("ALTER TABLE news ADD COLUMN category TEXT DEFAULT '產業'")
-    except Exception:
-        pass
-
     conn.commit()
     conn.close()
     clean_old_news()
@@ -374,7 +368,7 @@ def fetch_and_store_news():
     init_db()
     logs = []
     
-    conn = sqlite3.connect("news.db", timeout=30)
+    conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     added_count = 0
     total_fetched = 0
@@ -402,26 +396,21 @@ def fetch_and_store_news():
             raw_published = entry.get('published', '')
             published = parse_pub_date(raw_published)
             
-            # 1. 黑名單過濾
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
 
-            # 2. 攔截無效首頁標題
             clean_t = clean_title_for_comparison(title)
             invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
             if title.strip() in invalid_titles or len(clean_t) < 5:
                 continue
 
-            # 3. 網址無效路徑跳過
             if "cnyes.com" in url and "/news/id/" not in url:
                 continue
                 
-            # 4. 網址重複跳過
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
             if cursor.fetchone():
                 continue
 
-            # 5. 標題完全一致比對，重複則跳過
             if clean_t and len(clean_t) >= 6:
                 cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
                 existing = cursor.fetchone()
@@ -430,17 +419,10 @@ def fetch_and_store_news():
                     cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                     continue
                 
-            # 【關鍵加速優化】：在呼叫 AI 前先進行本地催化劑與台股過濾
-            # 若標題完全沒有任何觸發詞，且沒有明確台股代號，直接判定為低價值略過，不浪費 AI 時間
-            has_catalyst = any(term in title for term in CATALYST_TERMS)
-            has_stock_code = bool(re.search(r'\d{4}', title)) or any(k in title for k in STOCKS_MAP.keys())
-            if not has_catalyst and not has_stock_code:
-                continue
-
-            # 6. 透過 AI 或規則解析（已大幅減少需要送 AI 的文章數量）
             summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            # 7. 剔除低價值新聞
+            time.sleep(0.5)
+            
             if importance == "⚪":
                 continue
                 
@@ -455,7 +437,7 @@ def fetch_and_store_news():
                 
     conn.commit()
     conn.close()
-    logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆（已透過本地前置過濾加速）。")
+    logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
@@ -466,7 +448,7 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
-    , if search_query:
+    if search_query:
         sql += " AND (title LIKE ? OR source LIKE ? OR impact_companies LIKE ? OR summary LIKE ?)"
         params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
         
