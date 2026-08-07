@@ -3,7 +3,7 @@ import sqlite3
 import urllib.parse
 import os
 import re
-from collections import Counter
+import json
 from groq import Groq
 from email.utils import parsedate_to_datetime
 import datetime
@@ -11,6 +11,7 @@ import datetime
 # 強制設定台灣台北時區 (UTC+8)
 TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 
+# 1. 垃圾新聞黑名單
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
@@ -19,6 +20,26 @@ EXCLUDE_KEYWORDS = [
     "退休", "省錢", "發票", "中獎", "運勢", "生肖",
     "飼主", "寵物", "鄰居", "社會", "車禍", "命案", "外送", "勞基法"
 ]
+
+# 2. 無 AI 備援模式下的實質基本面與催化劑觸發詞
+CATALYST_TERMS = [
+    "股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", 
+    "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊", "擴產",
+    "EPS", "毛利率", "轉虧為盈", "訂單", "水冷", "散熱", "先進封裝", "CoWoS"
+]
+
+# 3. 無 AI 備援模式下的台股重點對照表 (可持續擴充)
+STOCKS_MAP = {
+    "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
+    "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
+    "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
+    "世芯": "世芯-KY(3661)", "創意": "創意(3443)", "奇鋐": "奇鋐(3017)",
+    "雙鴻": "雙鴻(3324)", "華城": "華城(1519)", "士電": "士電(1503)",
+    "中興電": "中興電(1513)", "亞力": "亞力(1514)", "雷虎": "雷虎(8033)",
+    "科懋": "科懋(6496)", "寶島科": "寶島科(5312)", "凌華": "凌華(6166)",
+    "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
+    "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
+}
 
 def clean_old_news():
     try:
@@ -59,10 +80,6 @@ def init_db():
             is_ai INTEGER DEFAULT 1
         )
     """)
-    try:
-        cursor.execute("ALTER TABLE news ADD COLUMN is_ai INTEGER DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass
     conn.commit()
     conn.close()
     clean_old_news()
@@ -75,67 +92,16 @@ def parse_pub_date(published_str):
     except Exception:
         return datetime.datetime.now(TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
-def clean_title_for_matching(title):
-    """去除媒體名稱、括號與標點符號，保留核心文字"""
-    title = re.sub(r' - [^-]+$', '', title)
-    title = re.sub(r'(快訊／|注意！|【[^】]+】|（[^）]+）|\([^\)]+\))', '', title)
-    title = re.sub(r'[^\w\u4e00-\u9fa5]', '', title)
-    return title
-
-def is_similar_news(title1, title2, threshold=0.25):
-    """使用 2-Gram 雙字組特徵計算兩標題的語意相似度"""
-    t1 = clean_title_for_matching(title1)
-    t2 = clean_title_for_matching(title2)
-    
-    if not t1 or not t2:
-        return False
-        
-    bg1 = set([t1[i:i+2] for i in range(len(t1)-1)])
-    bg2 = set([t2[i:i+2] for i in range(len(t2)-1)])
-    
-    if not bg1 or not bg2:
-        return False
-        
-    intersection = bg1.intersection(bg2)
-    union = bg1.union(bg2)
-    similarity = len(intersection) / len(union)
-    
-    return similarity >= threshold
-
-def generate_dynamic_queries():
-    api_key = os.environ.get("GROQ_API_KEY")
-    
-    if api_key:
-        try:
-            fallback_url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-            feed = feedparser.parse(fallback_url)
-            realtime_headlines = [entry.title for entry in feed.entries[:30]]
-            headlines_text = "\n".join(realtime_headlines) if realtime_headlines else "近期台股科技、半導體、政策與總經動態"
-
-            client = Groq(api_key=api_key)
-            prompt = f"""
-            以下是今天從市場即時抓取的新聞標題：
-            {headlines_text}
-
-            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「最具市場熱度、具備具體公司、產業或政策動向」的精確搜尋短字串。
-            絕對禁止產出空泛或與股市無關的詞彙。
-            請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
-            """
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2
-            )
-            text = response.choices[0].message.content.strip()
-            lines = [line.strip() for line in text.split("\n") if line.strip()]
-            if lines:
-                return lines[:3], "動態關鍵字產生成功 (AI 結合即時市場熱點)"
-        except Exception:
-            pass 
-
-    return [""], "AI 額度已滿，切換至「三大專業財經媒體直抓備援機制」"
+def clean_title_for_comparison(title):
+    """去除前綴與媒體尾綴，保留 10 個核心特徵字比對重複新聞"""
+    cleaned = re.sub(r' - [^-]+$', '', title)
+    cleaned = re.sub(r'^[【《\[\(][^】》\]\)]+[】》\]\)]', '', cleaned)
+    cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情)[／/！!：:\-\s]*', '', cleaned)
+    cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', cleaned)
+    return cleaned[:10]
 
 def analyze_news_with_ai(title, source):
+    """Part 1: AI 額度足夠時的精準解析"""
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         return fallback_rule_analysis(title)
@@ -176,112 +142,92 @@ def analyze_news_with_ai(title, source):
                 
         return summary, importance, impact_companies, 1
     except Exception:
+        # API 滿載/異常時，平滑切換至 Part 2 的強規則備援
         return fallback_rule_analysis(title)
 
 def fallback_rule_analysis(title):
-    financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
-    has_finance_keyword = any(term in title for term in financial_terms)
-    
-    if not has_finance_keyword:
+    """Part 2: AI 額度不足時的強規則備援解析"""
+    # 1. 基本面與催化劑詞彙過濾
+    has_catalyst = any(term in title for term in CATALYST_TERMS)
+    if not has_catalyst:
         return "", "⚪ 低", "", 0
 
+    # 2. 股票代號與公司名稱匹配
+    matched_stock = ""
     match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
     if match:
-        matched = f"{match.group(1)}({match.group(2)})"
+        matched_stock = f"{match.group(1)}({match.group(2)})"
     else:
-        stock_map = {
-            "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
-            "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
-            "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
-            "科懋": "科懋(6496)", "寶島科": "寶島科(5312)", "凌華": "凌華(6166)",
-            "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
-            "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
-        }
-        matched = ""
-        for k, v in stock_map.items():
+        for k, v in STOCKS_MAP.items():
             if k in title:
-                matched = v
+                matched_stock = v
                 break
-    return "", "🟡 中", matched, 0
+                
+    return "", "🟡 中", matched_stock, 0
 
 def fetch_and_store_news():
     init_db()
     logs = []
     
-    target_queries, query_status = generate_dynamic_queries()
-    logs.append(f"【步驟一】關鍵字狀態：{query_status}")
-    
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     added_count = 0
-    total_fetched = 0
     
+    # 直接鎖定三大專業財經媒體，進行單趟全量抓取
     media_filter = "site:ctee.com.tw OR site:edn.udn.com OR site:cnyes.com"
+    query_with_time = f"({media_filter}) when:3d"
+    encoded_query = urllib.parse.quote(query_with_time)
+    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
     
-    for q in target_queries:
-        if q.strip():
-            query_with_time = f"{q} ({media_filter}) when:3d"
-            log_query_name = f"關鍵字「{q}」"
-        else:
-            query_with_time = f"({media_filter}) when:3d"
-            log_query_name = "三大財經媒體全量直抓"
-
-        encoded_query = urllib.parse.quote(query_with_time)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-        feed = feedparser.parse(rss_url)
-        total_fetched += len(feed.entries)
+    feed = feedparser.parse(rss_url)
+    total_fetched = len(feed.entries)
+    logs.append(f"【檢索模式】三大專業財經媒體直抓（近三天原始新聞共 {total_fetched} 篇）")
+    
+    for entry in feed.entries:
+        title = entry.title
+        url = entry.link
+        source = entry.get('source', {}).get('title', '未知來源')
+        raw_published = entry.get('published', '')
+        published = parse_pub_date(raw_published)
         
-        logs.append(f"【步驟二】模式：{log_query_name} (時間：近三天) 抓取到原始新聞：{len(feed.entries)} 篇")
-        
-        for entry in feed.entries:
-            title = entry.title
-            url = entry.link
-            source = entry.get('source', {}).get('title', '未知來源')
-            raw_published = entry.get('published', '')
-            published = parse_pub_date(raw_published)
+        # 1. 垃圾關鍵字黑名單跳過
+        if any(ex in title for ex in EXCLUDE_KEYWORDS):
+            continue
             
-            if any(ex in title for ex in EXCLUDE_KEYWORDS):
-                continue
-                
-            # 1. 完全相同網址：視為重複抓取並更新曝光數
-            cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-            url_match = cursor.fetchone()
-            if url_match:
-                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (url_match[0],))
-                continue
+        # 2. 網址完全相同跳過
+        cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
+        if cursor.fetchone():
+            continue
 
-            # 2. 標題語意相似度比對：跨平台同議題新聞自動累加曝光數
-            cursor.execute("SELECT id, title FROM news")
-            all_existing_news = cursor.fetchall()
-            
-            is_duplicate_event = False
-            for news_id, existing_title in all_existing_news:
-                if is_similar_news(title, existing_title):
-                    cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
-                    is_duplicate_event = True
-                    break
-            
-            if is_duplicate_event:
+        # 3. 標題核心字查重，重複議題則更新曝光總數 (report_count + 1)
+        core_keyword = clean_title_for_comparison(title)
+        if core_keyword and len(core_keyword) >= 4:
+            cursor.execute("SELECT id FROM news WHERE title LIKE ?", (f"%{core_keyword}%",))
+            existing = cursor.fetchone()
+            if existing:
+                news_id = existing[0]
+                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
                 continue
-                
-            # 3. 若為新議題，則解析並寫入資料庫
-            summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            if importance == "⚪ 低":
-                continue
-                
-            try:
-                cursor.execute("""
-                    INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """, (url, title, source, published, summary, importance, impact_companies, is_ai))
-                added_count += 1
-            except Exception as e:
-                logs.append(f"寫入資料庫錯誤: {e}")
-                
+        # 4. 解析新聞（自動判斷走向 AI 語意或規則備援）
+        summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
+        
+        # 5. 剔除低價值新聞
+        if importance == "⚪ 低":
+            continue
+            
+        try:
+            cursor.execute("""
+                INSERT INTO news (url, title, source, published_date, summary, importance, impact_companies, report_count, is_ai)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """, (url, title, source, published, summary, importance, impact_companies, is_ai))
+            added_count += 1
+        except Exception as e:
+            logs.append(f"寫入資料庫錯誤: {e}")
+            
     conn.commit()
     conn.close()
-    logs.append(f"【步驟三】總共處理原始文章 {total_fetched} 篇，成功寫入近三日高價值情報 {added_count} 筆。")
+    logs.append(f"【執行結果】成功寫入近三日高價值情報 {added_count} 筆。")
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by="時間新到舊"):
