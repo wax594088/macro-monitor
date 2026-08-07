@@ -286,11 +286,13 @@ with tab_news:
     
     st.divider()
 
-    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+    # 調整欄位對齊：使用 padding-top 間距使核取方塊與搜尋框高度精準置中
+    col_f1, col_f2, col_f3 = st.columns([2.2, 1.2, 1.2])
     with col_f1:
-        search_query = st.text_input("搜尋關鍵字", "")
+        search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
     with col_f2:
-        only_important = st.checkbox("只看高重要性 (🔴 高)", value=False)
+        st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
+        only_important = st.checkbox("只看高重要性 (🔴)", value=False)
     with col_f3:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
         
@@ -315,8 +317,9 @@ with tab_news:
                 if is_ai == 1:
                     st.markdown("**[本新聞經過AI解析]**")
                 
-                # 移除標題的 ##### 標籤，改用標準文字排版以消除右側留白與對齊問題
-                st.markdown(f"{importance or '⚪'} [{title}]({url})")
+                # 去除燈號後面的「高/中/低」中文字，僅保留純圓點燈號
+                lamp_icon = (importance or "⚪").replace("高", "").replace("中", "").replace("低", "").strip()
+                st.markdown(f"{lamp_icon} [{title}]({url})")
                 
                 if is_ai == 1 and summary:
                     st.markdown(f"💡 **核心摘要**：{summary}")
