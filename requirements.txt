@@ -9,3 +9,4 @@ fredapi
 feedparser
 google-genai
 groq
+google-generativeai
