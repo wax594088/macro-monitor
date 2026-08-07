@@ -24,7 +24,6 @@ def clean_old_news():
     try:
         conn = sqlite3.connect("news.db")
         cursor = conn.cursor()
-        # 維持近三天資料
         cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
         conn.commit()
@@ -91,8 +90,8 @@ def generate_dynamic_queries():
             以下是今天從市場即時抓取的新聞標題：
             {headlines_text}
 
-            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「絕對與台股上市櫃公司、半導體供應鏈、政府重大產業政策、總體經濟或企業財報相關」的精確搜尋短字串。
-            絕對禁止挑選與社會新聞、地方民生、寵物、勞動法規（如外送法等無關股市者）無關的題材。
+            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「最具市場熱度、具備具體公司、產業或政策動向」的精確搜尋短字串（例如具體族群、重大政策或關鍵個股）。
+            絕對禁止產出空泛或與股市無關的詞彙。
             請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
             """
             response = client.chat.completions.create(
@@ -107,16 +106,14 @@ def generate_dynamic_queries():
         except Exception:
             pass 
 
-    return [
-        "台股 半導體 營收 供應鏈",
-        "金管會 政策 產業 影響",
-        "上市 櫃 公司 重訊 獲利"
-    ], "動態關鍵字產生失敗 (已切換至專業台股財經備援關鍵字)"
+    # 當 AI 額度滿或異常時，傳回空字串列表，觸發直接全量抓取三大財經媒體
+    return [""], "AI 額度已滿，切換至「三大專業財經媒體直抓備援機制」"
 
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return "", "⚪ 低", "", 0
+        # 無 API Key 時觸發備援過濾
+        return fallback_rule_analysis(title)
         
     try:
         client = Groq(api_key=api_key)
@@ -154,34 +151,35 @@ def analyze_news_with_ai(title, source):
                 
         return summary, importance, impact_companies, 1
     except Exception as e:
-        error_str = str(e)
-        if "429" in error_str or "rate_limit" in error_str.lower():
-            financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
-            has_finance_keyword = any(term in title for term in financial_terms)
-            
-            if not has_finance_keyword:
-                return "", "⚪ 低", "", 0
+        # API 滿載 (429) 或其他錯誤時改走純規則備援
+        return fallback_rule_analysis(title)
 
-            match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
-            if match:
-                matched = f"{match.group(1)}({match.group(2)})"
-            else:
-                stock_map = {
-                    "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
-                    "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
-                    "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
-                    "科懋": "科懋(6496)", "寶島科": "寶島科(5312)", "凌華": "凌華(6166)",
-                    "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
-                    "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
-                }
-                matched = ""
-                for k, v in stock_map.items():
-                    if k in title:
-                        matched = v
-                        break
-            return "", "🟡 中", matched, 0
-            
+def fallback_rule_analysis(title):
+    # 純規則審查：必須含財經關鍵字
+    financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
+    has_finance_keyword = any(term in title for term in financial_terms)
+    
+    if not has_finance_keyword:
         return "", "⚪ 低", "", 0
+
+    match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
+    if match:
+        matched = f"{match.group(1)}({match.group(2)})"
+    else:
+        stock_map = {
+            "台積電": "台積電(2330)", "鴻海": "鴻海(2317)", "聯發科": "聯發科(2454)",
+            "廣達": "廣達(2382)", "台達電": "台達電(2308)", "聯電": "聯電(2303)",
+            "緯創": "緯創(3231)", "緯穎": "緯穎(6669)", "技嘉": "技嘉(2376)",
+            "科懋": "科懋(6496)", "寶島科": "寶島科(5312)", "凌華": "凌華(6166)",
+            "台塑": "台塑(1301)", "南亞": "南亞(1303)", "台化": "台化(1326)",
+            "中華電": "中華電(2412)", "國泰金": "國泰金(2882)", "富邦金": "富邦金(2881)"
+        }
+        matched = ""
+        for k, v in stock_map.items():
+            if k in title:
+                matched = v
+                break
+    return "", "🟡 中", matched, 0
 
 def fetch_and_store_news():
     init_db()
@@ -195,17 +193,23 @@ def fetch_and_store_news():
     added_count = 0
     total_fetched = 0
     
-    # 限制僅抓取工商時報、經濟日報與鉅亨網
     media_filter = "site:ctee.com.tw OR site:edn.udn.com OR site:cnyes.com"
     
     for q in target_queries:
-        # 修改為近三天 (when:3d) 並套用媒體篩選
-        query_with_time = f"{q} ({media_filter}) when:3d"
+        if q.strip():
+            query_with_time = f"{q} ({media_filter}) when:3d"
+            log_query_name = f"關鍵字「{q}」"
+        else:
+            # 無關鍵字備援模式：直接抓取三大媒體近三日全量標題
+            query_with_time = f"({media_filter}) when:3d"
+            log_query_name = "三大財經媒體全量直抓"
+
         encoded_query = urllib.parse.quote(query_with_time)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         feed = feedparser.parse(rss_url)
         total_fetched += len(feed.entries)
-        logs.append(f"【步驟二】搜尋詞「{q} (限定三大媒體, 近三天)」抓取到原始新聞：{len(feed.entries)} 篇")
+        
+        logs.append(f"【步驟二】模式：{log_query_name} (時間：近三天) 抓取到原始新聞：{len(feed.entries)} 篇")
         
         for entry in feed.entries:
             title = entry.title
