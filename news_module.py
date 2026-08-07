@@ -524,7 +524,7 @@ def get_news_from_db(search_query="", limit=200, importance_filter=None, sort_by
     """安全讀取新聞資料庫（回傳對齊 app.py 的 9 個欄位，預設上限提升至 200 筆）"""
     init_db()
     
-    sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count, is_ai FROM news WHERE 1=1"
+    sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
     if search_query:
