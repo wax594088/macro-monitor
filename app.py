@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 基礎樣式：隱藏頂欄與底欄，設定適當內邊距
+# 基礎樣式微調與 number_input 按鈕符號替換
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -22,11 +22,29 @@ st.markdown("""
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
-    /* 修正分頁按鈕顯示，防止破圖與變形 */
-    .pag-btn button {
-        height: 36px !important;
-        padding: 0px 10px !important;
-        font-size: 14px !important;
+    /* 1. 讓 Checkbox 容器向下推 28px，精準垂直置中對齊旁邊的灰色輸入框 */
+    div[data-testid="stCheckbox"] {
+        padding-top: 28px !important;
+    }
+    
+    /* 2. 將 st.number_input 的 - 和 + 按鈕符號隱藏，並改用 < 與 > 替代 */
+    div[data-testid="stNumberInputStepDown"] button div {
+        display: none !important;
+    }
+    div[data-testid="stNumberInputStepDown"] button::after {
+        content: "<";
+        font-weight: bold;
+        font-size: 14px;
+        color: #555;
+    }
+    div[data-testid="stNumberInputStepUp"] button div {
+        display: none !important;
+    }
+    div[data-testid="stNumberInputStepUp"] button::after {
+        content: ">";
+        font-weight: bold;
+        font-size: 14px;
+        color: #555;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -274,7 +292,6 @@ with tab_news:
         if nm.clear_all_news():
             st.session_state.pop("last_fetch_success", None)
             st.session_state.pop("last_fetch_logs", None)
-            st.session_state["news_page"] = 1
             st.success("資料庫已成功清空！")
             st.rerun()
         else:
@@ -294,15 +311,13 @@ with tab_news:
                 for log in st.session_state["last_fetch_logs"]:
                     st.write(log)
     
-    # 精準對齊：在「只看高重要性」上方補齊對齊空白點
+    # 搜尋與篩選對齊控制列
     col_f1, col_f2, col_f3, col_f4 = st.columns([2.0, 1.2, 1.2, 1.2])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
         category_option = st.selectbox("新聞類別", ["全部", "財報", "重訊", "國際", "指數", "產業", "總經"])
     with col_f3:
-        # 使用小空白 padding 讓勾選框完美置中對齊灰色欄位
-        st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
         only_important = st.checkbox("只看高重要性 (🔴)", value=False)
     with col_f4:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
@@ -325,35 +340,21 @@ with tab_news:
         items_per_page = 30
         total_pages = math.ceil(total_items / items_per_page) if total_items > 0 else 1
 
-        if "news_page" not in st.session_state:
-            st.session_state["news_page"] = 1
-            
-        if st.session_state["news_page"] > total_pages:
-            st.session_state["news_page"] = 1
-
         st.write(f"共呈現 **{total_items}** 筆過濾後的精選情報：")
 
-        # 修正分頁比例：加大左側空間使文字保持單行，放寬按鈕避免擠壓破圖
-        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([4.0, 0.6, 0.6, 4.8])
-        
-        with col_p_label:
-            st.markdown(f'<div style="padding-top: 6px; white-space: nowrap;">選擇頁碼：第 <b>{st.session_state["news_page"]}</b> / <b>{total_pages}</b> 頁（每頁 30 筆）</div>', unsafe_allow_html=True)
-            
-        with col_btn_prev:
-            st.markdown('<div class="pag-btn">', unsafe_allow_html=True)
-            if st.button("＜", use_container_width=True, disabled=(st.session_state["news_page"] <= 1)):
-                st.session_state["news_page"] -= 1
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-                
-        with col_btn_next:
-            st.markdown('<div class="pag-btn">', unsafe_allow_html=True)
-            if st.button("＞", use_container_width=True, disabled=(st.session_state["news_page"] >= total_pages)):
-                st.session_state["news_page"] += 1
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        # 恢復使用原生的選擇頁碼元件 (st.number_input)，並呈現原本單行排版
+        col_p1, col_p2 = st.columns([1, 3])
+        with col_p1:
+            current_page = st.number_input(
+                "選擇頁碼", 
+                min_value=1, 
+                max_value=total_pages, 
+                value=1, 
+                step=1
+            )
+        with col_p2:
+            st.markdown(f'<div style="padding-top: 28px;">第 <b>{current_page}</b> / <b>{total_pages}</b> 頁（每頁顯示 {items_per_page} 筆）</div>', unsafe_allow_html=True)
 
-        current_page = st.session_state["news_page"]
         start_idx = (current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
         page_rows = news_rows[start_idx:end_idx]
