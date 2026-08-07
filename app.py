@@ -289,7 +289,7 @@ with tab_news:
     # 調整欄位對齊：使用 padding-top 間距使核取方塊與搜尋框高度精準置中
     col_f1, col_f2, col_f3 = st.columns([2.2, 1.2, 1.2])
     with col_f1:
-        search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
+        search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
         st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
         only_important = st.checkbox("只看高重要性 (🔴)", value=False)
