@@ -12,6 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 注入美化與對齊樣式
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -20,6 +21,18 @@ st.markdown("""
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
+    }
+    /* 讓 Checkbox 垂直置中對齊灰色輸入框 */
+    div[data-testid="stCheckbox"] {
+        margin-top: 28px !important;
+        display: flex;
+        align-items: center;
+    }
+    /* 縮小分頁按鈕寬度並緊湊排列 */
+    div[data-testid="column"] button {
+        padding: 2px 8px !important;
+        min-height: 32px !important;
+        height: 32px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -287,14 +300,13 @@ with tab_news:
                 for log in st.session_state["last_fetch_logs"]:
                     st.write(log)
     
-    # 移除原本多餘的空白分隔線，直接緊銜接搜尋與排版篩選列
+    # 控列微調：修補對齊，並使 Checkbox 垂直置中
     col_f1, col_f2, col_f3, col_f4 = st.columns([2.0, 1.2, 1.2, 1.2])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
         category_option = st.selectbox("新聞類別", ["全部", "財報", "重訊", "國際", "指數", "產業", "總經"])
     with col_f3:
-        st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
         only_important = st.checkbox("只看高重要性 (🔴)", value=False)
     with col_f4:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
@@ -317,18 +329,16 @@ with tab_news:
         items_per_page = 30
         total_pages = math.ceil(total_items / items_per_page) if total_items > 0 else 1
 
-        # 初始化 Session State 分頁器
         if "news_page" not in st.session_state:
             st.session_state["news_page"] = 1
             
-        # 防止過濾條件改變時頁碼超出範圍
         if st.session_state["news_page"] > total_pages:
             st.session_state["news_page"] = 1
 
         st.write(f"共呈現 **{total_items}** 筆過濾後的精選情報：")
 
-        # 簡化分頁介面：改為前後箭頭 ( < > ) 按鈕
-        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([3, 0.5, 0.5, 4])
+        # 縮小分頁按鈕並緊貼靠左
+        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([1.8, 0.3, 0.3, 5.6])
         
         with col_p_label:
             st.markdown(f'<div style="padding-top: 6px;">選擇頁碼：第 <b>{st.session_state["news_page"]}</b> / <b>{total_pages}</b> 頁（每頁 30 筆）</div>', unsafe_allow_html=True)
@@ -343,7 +353,6 @@ with tab_news:
                 st.session_state["news_page"] += 1
                 st.rerun()
 
-        # 取得當前頁面的資料切片
         current_page = st.session_state["news_page"]
         start_idx = (current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
