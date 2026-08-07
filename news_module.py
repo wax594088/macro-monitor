@@ -75,6 +75,12 @@ def parse_pub_date(published_str):
     except Exception:
         return datetime.datetime.now(TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
+def clean_title_for_comparison(title):
+    """去除新聞標題尾端的媒體名稱與符號，用於比對是否為同新聞議題"""
+    cleaned = re.sub(r' - [^-]+$', '', title)
+    cleaned = re.sub(r'[\s\s\t\n\r]', '', cleaned)
+    return cleaned[:15]  # 取前15個關鍵字進行核心特徵比對
+
 def generate_dynamic_queries():
     api_key = os.environ.get("GROQ_API_KEY")
     
@@ -90,7 +96,7 @@ def generate_dynamic_queries():
             以下是今天從市場即時抓取的新聞標題：
             {headlines_text}
 
-            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「最具市場熱度、具備具體公司、產業或政策動向」的精確搜尋短字串（例如具體族群、重大政策或關鍵個股）。
+            你是一個專業的台股操盤手。請從上述真實標題中，嚴格篩選並歸納出 3 個「最具市場熱度、具備具體公司、產業或政策動向」的精確搜尋短字串。
             絕對禁止產出空泛或與股市無關的詞彙。
             請嚴格只回傳 3 個搜尋短字串，每行一個，不要有編號或額外文字。
             """
@@ -106,13 +112,11 @@ def generate_dynamic_queries():
         except Exception:
             pass 
 
-    # 當 AI 額度滿或異常時，傳回空字串列表，觸發直接全量抓取三大財經媒體
     return [""], "AI 額度已滿，切換至「三大專業財經媒體直抓備援機制」"
 
 def analyze_news_with_ai(title, source):
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        # 無 API Key 時觸發備援過濾
         return fallback_rule_analysis(title)
         
     try:
@@ -150,12 +154,10 @@ def analyze_news_with_ai(title, source):
                     impact_companies = val
                 
         return summary, importance, impact_companies, 1
-    except Exception as e:
-        # API 滿載 (429) 或其他錯誤時改走純規則備援
+    except Exception:
         return fallback_rule_analysis(title)
 
 def fallback_rule_analysis(title):
-    # 純規則審查：必須含財經關鍵字
     financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
     has_finance_keyword = any(term in title for term in financial_terms)
     
@@ -200,7 +202,6 @@ def fetch_and_store_news():
             query_with_time = f"{q} ({media_filter}) when:3d"
             log_query_name = f"關鍵字「{q}」"
         else:
-            # 無關鍵字備援模式：直接抓取三大媒體近三日全量標題
             query_with_time = f"({media_filter}) when:3d"
             log_query_name = "三大財經媒體全量直抓"
 
@@ -221,10 +222,22 @@ def fetch_and_store_news():
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
                 
+            # 1. 檢查完全相同的網址
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
             if cursor.fetchone():
                 continue
+
+            # 2. 標題相近查重與曝光次數（report_count）累加
+            core_title_keyword = clean_title_for_comparison(title)
+            cursor.execute("SELECT id, report_count FROM news WHERE title LIKE ?", (f"%{core_title_keyword}%",))
+            existing = cursor.fetchone()
+            
+            if existing:
+                news_id, current_count = existing
+                cursor.execute("UPDATE news SET report_count = report_count + 1 WHERE id = ?", (news_id,))
+                continue
                 
+            # 3. 若為新議題，則解析並寫入資料庫
             summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
             if importance == "⚪ 低":
