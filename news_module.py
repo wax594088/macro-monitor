@@ -5,6 +5,7 @@ import os
 import re
 import json
 import time
+import requests
 from groq import Groq
 from email.utils import parsedate_to_datetime
 import datetime
@@ -18,6 +19,9 @@ except ImportError:
 
 # 強制設定台灣台北時區 (UTC+8)
 TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
+
+# 全局快取全台股字典
+GLOBAL_STOCKS_MAP = {}
 
 # 1. 垃圾新聞與機器罐頭速報黑名單
 EXCLUDE_KEYWORDS = [
@@ -55,7 +59,7 @@ CATALYST_TERMS = [
     "關稅壁壘", "聯準會"
 ]
 
-# 3. 無 AI 備援模式下的台股重點對照表
+# 3. 無 AI 備援模式下的台股重點對照表（備援字典）
 STOCKS_MAP = {
     "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)", "世界": "世界(5347)",
     "日月光投控": "日月光投控(3711)", "日月光": "日月光投控(3711)", "京元電子": "京元電子(2449)",
@@ -101,6 +105,54 @@ STOCKS_MAP = {
     "華南金": "華南金(2880)", "開發金": "凱基金(2883)", "凱基金": "凱基金(2883)",
     "合庫金": "合庫金(5880)", "上海商銀": "上海商銀(5876)"
 }
+
+def load_all_taiwan_stocks():
+    """自動透過 FinMind API 免費下載臺灣證券交易所與櫃買中心最新全台股清單 (2000+ 支)"""
+    global GLOBAL_STOCKS_MAP
+    if GLOBAL_STOCKS_MAP:
+        return GLOBAL_STOCKS_MAP
+
+    url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json().get("data", [])
+            stocks = {}
+            for item in data:
+                stock_id = item.get("stock_id", "").strip()
+                stock_name = item.get("stock_name", "").strip()
+                if stock_id.isdigit() and len(stock_id) == 4 and stock_name:
+                    stocks[stock_name] = f"{stock_name}({stock_id})"
+            if stocks:
+                GLOBAL_STOCKS_MAP = stocks
+                return stocks
+    except Exception:
+        pass
+
+    return STOCKS_MAP
+
+def extract_stocks_by_rules(title):
+    """由 Python 完全主導拿新聞標題比對全台股清單，根除 AI 瞎掰"""
+    stocks_map = load_all_taiwan_stocks()
+    matched = []
+    
+    # 優先比對標題內已包含括號之格式（例：宜鼎(5289)）
+    match_code = re.findall(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', title)
+    for name, code in match_code:
+        matched.append(f"{name}({code})")
+
+    # 拿全台股資料庫進行標題匹配
+    for name, full_str in stocks_map.items():
+        if len(name) >= 2 and name in title and full_str not in matched:
+            matched.append(full_str)
+
+    res_str = "、".join(matched) if matched else ""
+    
+    # 格式防護：若結果包含燈號或「無」字樣，直接清空為空字串
+    if any(icon in res_str for icon in ["🔴", "🟡", "⚪", "⚫", "無"]):
+        return ""
+        
+    return res_str
 
 def clean_old_news():
     try:
@@ -166,9 +218,9 @@ def clean_url_params(url):
     url = re.sub(r'\?&', '?', url)
     return url.rstrip('?&')
 
-def parse_ai_response(text):
-    """精準清洗 AI 回傳，嚴防推理理由外漏至欄位中"""
-    summary, importance, impact_companies = "", "⚪", ""
+def parse_ai_response(text, title):
+    """精準清洗 AI 回傳，AI 僅負責重要性與摘要；台股個股由 Python 本地精準比對"""
+    summary, importance = "", "⚪"
     for line in text.split("\n"):
         line_str = line.strip()
         if "摘要：" in line_str:
@@ -182,16 +234,18 @@ def parse_ai_response(text):
                 importance = "🟡"
             else:
                 importance = "⚪"
-        elif "影響台股：" in line_str:
-            val = line_str.replace("影響台股：", "").strip()
-            val = re.sub(r'[，,]\s*因為.*$', '', val)
-            val = re.sub(r'^[＊\*\s]+', '', val)
-            if val != "無":
-                impact_companies = val
+
+    # 由 Python 代替 AI 比對股票清單
+    impact_companies = extract_stocks_by_rules(title)
+    
+    # 防護攔截：若包含燈號符號（🔴、🟡、⚪、⚫）或「無」，直接清空為空字串
+    if any(icon in impact_companies for icon in ["🔴", "🟡", "⚪", "⚫", "無"]):
+        impact_companies = ""
+
     return summary, importance, impact_companies, 1
 
 def analyze_news_with_ai(title, source):
-    """純免費 AI 接力備援流"""
+    """AI 只負責決定重要性與一句話摘要，不再對應台股個股"""
     prompt = f"""
     你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
     新聞標題：{title}
@@ -204,7 +258,6 @@ def analyze_news_with_ai(title, source):
     請嚴格依照下列格式回傳（嚴禁在欄位內填寫任何多餘的解釋或理由）：
     摘要：[僅填一句話說明事件本質]
     重要性：[僅填 🔴高、🟡中、或 ⚪低]
-    影響台股：[僅填公司與代號，無多餘說明，例：台積電(2330)]
     """
     
     groq_key = os.environ.get("GROQ_API_KEY")
@@ -218,7 +271,7 @@ def analyze_news_with_ai(title, source):
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1
             )
-            return parse_ai_response(response.choices[0].message.content.strip())
+            return parse_ai_response(response.choices[0].message.content.strip(), title)
         except Exception:
             pass
 
@@ -227,7 +280,7 @@ def analyze_news_with_ai(title, source):
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
-            return parse_ai_response(response.text.strip())
+            return parse_ai_response(response.text.strip(), title)
         except Exception:
             pass
 
@@ -239,7 +292,7 @@ def analyze_news_with_ai(title, source):
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1
             )
-            return parse_ai_response(response.choices[0].message.content.strip())
+            return parse_ai_response(response.choices[0].message.content.strip(), title)
         except Exception:
             pass
 
@@ -250,20 +303,7 @@ def fallback_rule_analysis(title):
     if not has_catalyst:
         return "", "⚪", "", 0
 
-    matched_stock = ""
-    match_a = re.search(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', title)
-    match_b = re.search(r'(\d{4})\s*([\u4e00-\u9fa5\w\-]+)', title)
-    
-    if match_a:
-        matched_stock = f"{match_a.group(1)}({match_a.group(2)})"
-    elif match_b and len(match_b.group(2)) >= 2:
-        matched_stock = f"{match_b.group(2)}({match_b.group(1)})"
-    else:
-        for k, v in STOCKS_MAP.items():
-            if k in title:
-                matched_stock = v
-                break
-                
+    matched_stock = extract_stocks_by_rules(title)
     return "", "🟡", matched_stock, 0
 
 def fetch_and_store_news():
