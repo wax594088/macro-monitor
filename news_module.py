@@ -348,28 +348,23 @@ def analyze_news_with_ai(title, source):
     if AI_CIRCUIT_BROKEN:
         return fallback_rule_analysis(title)
 
+    # 壓低 TPM：精簡 Prompt 說明與定義，大幅節省 Input Token
     prompt = f"""
-    你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
-    新聞標題：{title}
-    新聞來源：{source}
+評估新聞對台股影響：
+標題：{title}
+來源：{source}
 
-    判斷標準：
-    - 若屬於一般理財、生活消費、社會新聞、寵物、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
-    - 若屬於核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
+規則：
+- 理財、消費、無關台股設為「⚪ 低」。
+- 政策、風險、基本面、總經、供應鏈影響設為「🔴 高」或「🟡 中」。
 
-    類別選項（僅限填寫其中一項）：財報、重訊、國際、指數、產業、總經
-    - 財報：單月營收、季報、年報、EPS、獲利表現。
-    - 重訊：法說會、庫藏股、減資增資、併購、重大營運公告。
-    - 國際：美股動態、國際財經事件、海外大廠、地緣政治。
-    - 指數：大盤走勢、類股指數、盤中速報、法人籌碼。
-    - 產業：供應鏈、訂單、擴產、技術突破、新產品。
-    - 總經：央行利率、聯準會(Fed)、通膨數據(CPI/PPI)、政策。
+類別：財報、重訊、國際、指數、產業、總經
 
-    請嚴格依照下列格式回傳（嚴禁在欄位內填寫任何多餘的解釋或理由）：
-    摘要：[僅填一句話說明事件本質]
-    重要性：[僅填 🔴高、🟡中、或 ⚪低]
-    類別：[僅填 財報、重訊、國際、指數、產業、總經 其中一項]
-    """
+格式：
+摘要：[一句話說明本質]
+重要性：[🔴高、🟡中、或 ⚪低]
+類別：[僅填一項類別]
+"""
     
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -430,6 +425,7 @@ def fetch_and_store_news():
     
     added_count = 0
     total_fetched = 0
+    ai_process_count = 0  # 控制單次 AI 處理總量計數器
     
     media_targets = [
         ("工商時報", "site:ctee.com.tw"),
@@ -471,7 +467,7 @@ def fetch_and_store_news():
                 cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
                 if cursor.fetchone():
                     continue
-
+                
                 if clean_t and len(clean_t) >= 6:
                     cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
                     existing = cursor.fetchone()
@@ -480,11 +476,15 @@ def fetch_and_store_news():
                         cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                         conn.commit()
                         continue
-                    
-                summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
-                
-                if is_ai == 1 and not AI_CIRCUIT_BROKEN:
-                    time.sleep(0.5)
+
+                # 壓低 RPM：單次執行若超過 15 篇 AI 處理數量，自動轉為本地規則，避免擠爆 API 配額
+                if ai_process_count >= 15:
+                    summary, importance, category, impact_companies, is_ai = fallback_rule_analysis(title)
+                else:
+                    summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
+                    if is_ai == 1 and not AI_CIRCUIT_BROKEN:
+                        ai_process_count += 1
+                        time.sleep(2.0)  # 壓低 RPM：拉長請求間隔至 2 秒
                     
                 if importance == "⚪":
                     continue
