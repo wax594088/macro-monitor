@@ -335,7 +335,8 @@ with tab_news:
         page_rows = news_rows[start_idx:end_idx]
 
         for row in page_rows:
-            date, title, source, url, summary, importance, impact_companies, report_count, is_ai = row
+            # 完整解包 SQL 回傳之 10 個欄位（包含 category）
+            date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
                 if is_ai == 1:
@@ -349,6 +350,10 @@ with tab_news:
                 else:
                     st.markdown("💡 **核心摘要**：[AI額度已滿，無摘要]")
                 
+                # 新增渲染：顯示新聞類別
+                cat_text = category if (category and category.strip()) else "產業"
+                st.markdown(f"📁 **新聞類別**：{cat_text}")
+
                 if impact_companies and impact_companies.strip():
                     st.markdown(f"🏷️ **對應台股**：`{impact_companies}`")
                 else:
