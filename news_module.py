@@ -154,28 +154,44 @@ def parse_pub_date(published_str):
         return datetime.datetime.now(TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
 def clean_title_for_comparison(title):
-    """去除媒體前綴與套話，保留核心標題進行精準比對"""
     cleaned = re.sub(r' - [^-]+$', '', title)
     cleaned = re.sub(r'^[【《\[\(][^】》\]\)]+[】》\]\)]', '', cleaned)
     cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情|鉅亨速報|Factset\s*最新調查\s*[:：]?)[／/！!：:\-\s]*', '', cleaned)
     cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', cleaned)
     return cleaned
 
+def clean_url_params(url):
+    """剔除網址中夾帶的列印與無效參數"""
+    url = re.sub(r'[\?&](print|isPrint|output=print)=[^&]*', '', url, flags=re.IGNORECASE)
+    url = re.sub(r'\?&', '?', url)
+    return url.rstrip('?&')
+
 def parse_ai_response(text):
-    summary, importance, impact_companies = "", "⚪ 低", ""
+    """精準清洗 AI 回傳，嚴防推理理由外漏至欄位中"""
+    summary, importance, impact_companies = "", "⚪", ""
     for line in text.split("\n"):
-        if "摘要：" in line:
-            summary = line.replace("摘要：", "").strip()
-        elif "重要性：" in line:
-            importance = line.replace("重要性：", "").strip()
-        elif "影響台股：" in line:
-            val = line.replace("影響台股：", "").strip()
+        line_str = line.strip()
+        if "摘要：" in line_str:
+            val = line_str.replace("摘要：", "").strip()
+            summary = re.sub(r'^[＊\*\s]+', '', val)
+        elif "重要性：" in line_str:
+            val = line_str.replace("重要性：", "").strip()
+            if "🔴" in val:
+                importance = "🔴"
+            elif "🟡" in val:
+                importance = "🟡"
+            else:
+                importance = "⚪"
+        elif "影響台股：" in line_str:
+            val = line_str.replace("影響台股：", "").strip()
+            val = re.sub(r'[，,]\s*因為.*$', '', val)
+            val = re.sub(r'^[＊\*\s]+', '', val)
             if val != "無":
                 impact_companies = val
     return summary, importance, impact_companies, 1
 
 def analyze_news_with_ai(title, source):
-    """純免費 AI 接力備援流：Groq (70B) -> Gemini Flash -> Groq (8B) -> 靜態規則"""
+    """純免費 AI 接力備援流"""
     prompt = f"""
     你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
     新聞標題：{title}
@@ -185,16 +201,15 @@ def analyze_news_with_ai(title, source):
     - 若屬於一般理財、生活消費、社會新聞、寵物、無具體公司財報/訂單的小道消息、或與台股無關，請將重要性設為「⚪ 低」。
     - 若屬於核心維度（政策紅利、突發風險、基本面拐點、總經變數、供應鏈衝擊），請將重要性設為「🔴 高」或「🟡 中」。
 
-    請嚴格依照下列格式回傳：
-    摘要：[用一句話精準說明事件本質與市場影響]
-    重要性：[請填 🔴高、🟡中、或 ⚪低]
-    影響台股：[必須明確列出受此事件影響的台股公司名稱與代號，例如：台積電(2330)。若無法明確對應具體台股代號或屬低價值新聞，請填「無」]
+    請嚴格依照下列格式回傳（嚴禁在欄位內填寫任何多餘的解釋或理由）：
+    摘要：[僅填一句話說明事件本質]
+    重要性：[僅填 🔴高、🟡中、或 ⚪低]
+    影響台股：[僅填公司與代號，無多餘說明，例：台積電(2330)]
     """
     
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
-    # 1. 第一順位：Groq (llama-3.3-70b-versatile)
     if groq_key:
         try:
             client = Groq(api_key=groq_key)
@@ -207,7 +222,6 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 2. 第二順位：Google Gemini (gemini-1.5-flash)
     if gemini_key and HAS_GEMINI_SDK:
         try:
             genai.configure(api_key=gemini_key)
@@ -217,7 +231,6 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 3. 第三順位：Groq 輕量模型 (llama-3.1-8b-instant)
     if groq_key:
         try:
             client = Groq(api_key=groq_key)
@@ -230,13 +243,12 @@ def analyze_news_with_ai(title, source):
         except Exception:
             pass
 
-    # 4. 第四順位：純靜態規則庫備援
     return fallback_rule_analysis(title)
 
 def fallback_rule_analysis(title):
     has_catalyst = any(term in title for term in CATALYST_TERMS)
     if not has_catalyst:
-        return "", "⚪ 低", "", 0
+        return "", "⚪", "", 0
 
     matched_stock = ""
     match_a = re.search(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', title)
@@ -252,7 +264,7 @@ def fallback_rule_analysis(title):
                 matched_stock = v
                 break
                 
-    return "", "🟡 中", matched_stock, 0
+    return "", "🟡", matched_stock, 0
 
 def fetch_and_store_news():
     init_db()
@@ -281,31 +293,31 @@ def fetch_and_store_news():
         
         for entry in feed.entries:
             title = entry.title
-            url = entry.link
+            url = clean_url_params(entry.link)
             source = entry.get('source', {}).get('title', media_name)
             raw_published = entry.get('published', '')
             published = parse_pub_date(raw_published)
             
-            # 1. 垃圾關鍵字黑名單過濾
+            # 1. 黑名單過濾
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
 
-            # 2. 攔截無效首頁標題與純媒體名稱（避免 AI 產生幻覺）
+            # 2. 攔截無效首頁標題
             clean_t = clean_title_for_comparison(title)
-            invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com"]
+            invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
             if title.strip() in invalid_titles or len(clean_t) < 5:
                 continue
 
-            # 3. 網址缺乏文章路徑（非單篇新聞）時自動跳過
+            # 3. 網址無效路徑跳過
             if "cnyes.com" in url and "/news/id/" not in url:
                 continue
                 
-            # 4. 網址完全相同跳過
+            # 4. 網址重複跳過
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
             if cursor.fetchone():
                 continue
 
-            # 5. 標題完全一致比對，若同一新聞重複出現則更新發布時間與曝光數
+            # 5. 標題完全一致比對，重複更新發布時間
             if clean_t and len(clean_t) >= 6:
                 cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
                 existing = cursor.fetchone()
@@ -314,14 +326,14 @@ def fetch_and_store_news():
                     cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                     continue
                 
-            # 6. 呼叫 AI 或規則庫解析新聞
+            # 6. AI 或規則解析
             summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            # 7. 每篇加入 0.5 秒流速控制
+            # 7. 流速控制
             time.sleep(0.5)
             
             # 8. 剔除低價值新聞
-            if importance == "⚪ 低":
+            if importance == "⚪":
                 continue
                 
             try:
