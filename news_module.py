@@ -201,7 +201,7 @@ def extract_stocks_by_rules(title):
     return res_str
 
 def init_db():
-    """初始化資料庫並自動進行 Schema 自動補齊 (修復 table news has no column named category)"""
+    """初始化資料庫，包含強制建表與補齊缺漏欄位邏輯"""
     try:
         with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
@@ -211,7 +211,6 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
-            # 建立基底 Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS news (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,7 +227,7 @@ def init_db():
                 )
             """)
 
-            # 動態檢查舊資料庫是否缺乏新欄位，自動修復 Migration
+            # 檢查並自動補充缺少的欄位
             cursor.execute("PRAGMA table_info(news);")
             existing_cols = [col[1] for col in cursor.fetchall()]
 
@@ -264,12 +263,14 @@ def clean_old_news():
         pass
 
 def clear_all_news():
+    """徹底刪除舊表並重新建表，徹底清除缺欄位引起的 sqlite3 錯誤"""
     try:
         with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM news")
+            cursor.execute("DROP TABLE IF EXISTS news;")
             conn.commit()
-            return True
+        init_db()
+        return True
     except Exception:
         return False
 
