@@ -201,17 +201,17 @@ def extract_stocks_by_rules(title):
     return res_str
 
 def init_db():
-    """初始化資料庫（防範 PRAGMA 獨占鎖與 Streamlit 容器檔案系統報錯）"""
+    """初始化資料庫並自動進行 Schema 自動補齊 (修復 table news has no column named category)"""
     try:
         with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
             
-            # 容錯機制：嘗試開啟 WAL 模式，若受限於容器權限或鎖定則自動忽略降級
             try:
                 cursor.execute("PRAGMA journal_mode=WAL;")
             except sqlite3.OperationalError:
                 pass
 
+            # 建立基底 Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS news (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +227,27 @@ def init_db():
                     is_ai INTEGER DEFAULT 1
                 )
             """)
+
+            # 動態檢查舊資料庫是否缺乏新欄位，自動修復 Migration
+            cursor.execute("PRAGMA table_info(news);")
+            existing_cols = [col[1] for col in cursor.fetchall()]
+
+            required_cols = {
+                "summary": "TEXT",
+                "importance": "TEXT",
+                "category": "TEXT",
+                "impact_companies": "TEXT",
+                "report_count": "INTEGER DEFAULT 1",
+                "is_ai": "INTEGER DEFAULT 1"
+            }
+
+            for col_name, col_type in required_cols.items():
+                if col_name not in existing_cols:
+                    try:
+                        cursor.execute(f"ALTER TABLE news ADD COLUMN {col_name} {col_type};")
+                    except Exception:
+                        pass
+
             conn.commit()
     except Exception:
         pass
@@ -263,7 +284,7 @@ def parse_pub_date(published_str):
 def clean_title_for_comparison(title):
     cleaned = re.sub(r' - [^-]+$', '', title)
     cleaned = re.sub(r'^[【《\[\(][^】》\]\)]+[】》\]\)]', '', cleaned)
-    cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情|鋸亨速報|Factset\s*最新調查\s*[:：]?)[／/！!：:\-\s]*', '', cleaned)
+    cleaned = re.sub(r'^(快訊|注意|特報|即時|焦點|頭條|商情|鉅亨速報|Factset\s*最新調查\s*[:：]?)[／/！!：:\-\s]*', '', cleaned)
     cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', cleaned)
     return cleaned
 
@@ -393,7 +414,7 @@ def analyze_news_with_ai(title, source):
     return fallback_rule_analysis(title)
 
 def fetch_and_store_news():
-    """抓取新聞、進行 AI 解析並儲存至 SQLite，具備安全併發控制"""
+    """抓取新聞、進行 AI 解析並儲存至 SQLite，具備安全併發與 Migration 控制"""
     global AI_CIRCUIT_BROKEN
     AI_CIRCUIT_BROKEN = False  # 每輪啟動重置熔斷狀態
     
@@ -406,7 +427,7 @@ def fetch_and_store_news():
     media_targets = [
         ("工商時報", "site:ctee.com.tw"),
         ("經濟日報", "site:edn.udn.com"),
-        ("鋸亨網", "site:cnyes.com")
+        ("鉅亨網", "site:cnyes.com")
     ]
     
     with sqlite3.connect("news.db", timeout=20.0) as conn:
@@ -478,7 +499,9 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
-    """純讀取新聞資料庫，避免查詢時觸發寫入鎖定"""
+    """純讀取新聞資料庫，具備容錯修補機制"""
+    init_db()
+    
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
@@ -504,9 +527,4 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
             cursor.execute(sql, params)
             return cursor.fetchall()
     except sqlite3.OperationalError:
-        # 若資料表完全不存在（首次部署），才初始化並重試
-        init_db()
-        with sqlite3.connect("news.db", timeout=20.0) as conn:
-            cursor = conn.cursor()
-            cursor.execute(sql, params)
-            return cursor.fetchall()
+        return []
