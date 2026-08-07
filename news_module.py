@@ -19,14 +19,15 @@ except ImportError:
 # 強制設定台灣台北時區 (UTC+8)
 TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 
-# 1. 垃圾新聞黑名單
+# 1. 垃圾新聞與機器罐頭速報黑名單
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
     "中職", "NBA", "電影", "網紅", "藝人", "電視劇", "綜藝",
     "定期定額", "小資族", "新手", "教學", "開戶", "ETF掛牌",
     "存股", "理財", "買房", "租屋", "信用卡", "現金回饋", "保險",
     "退休", "省錢", "發票", "中獎", "運勢", "生肖",
-    "飼主", "寵物", "鄰居", "社會", "車禍", "命案", "外送", "勞基法"
+    "飼主", "寵物", "鄰居", "社會", "車禍", "命案", "外送", "勞基法",
+    "鉅亨速報", "Factset", "FactSet", "目標價為", "鉅亨熱AI", "鉅亨熱", "專頁", "頻道"
 ]
 
 # 2. 無 AI 備援模式下的實質基本面與催化劑觸發詞
@@ -288,32 +289,38 @@ def fetch_and_store_news():
             # 1. 垃圾關鍵字黑名單過濾
             if any(ex in title for ex in EXCLUDE_KEYWORDS):
                 continue
+
+            # 2. 攔截無效首頁標題與純媒體名稱（避免 AI 產生幻覺）
+            clean_t = clean_title_for_comparison(title)
+            invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com"]
+            if title.strip() in invalid_titles or len(clean_t) < 5:
+                continue
+
+            # 3. 網址缺乏文章路徑（非單篇新聞）時自動跳過
+            if "cnyes.com" in url and "/news/id/" not in url:
+                continue
                 
-            # 2. 網址完全相同跳過
+            # 4. 網址完全相同跳過
             cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
             if cursor.fetchone():
                 continue
 
-            # 3. 標題完全一致比對，若同一新聞重複出現則更新發布時間與曝光數
-            core_keyword = clean_title_for_comparison(title)
-            if core_keyword and len(core_keyword) >= 6:
-                cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{core_keyword}%",))
+            # 5. 標題完全一致比對，若同一新聞重複出現則更新發布時間與曝光數
+            if clean_t and len(clean_t) >= 6:
+                cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
                 existing = cursor.fetchone()
                 if existing:
                     news_id = existing[0]
                     cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                     continue
-            # 4. 網址缺乏文章路徑（非單篇新聞）時自動跳過
-            if "cnyes.com" in url and "/news/id/" not in url:
-                continue
                 
-            # 5. 呼叫 AI 或規則庫解析新聞
+            # 6. 呼叫 AI 或規則庫解析新聞
             summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            # 6. 每篇加入 0.5 秒流速控制
+            # 7. 每篇加入 0.5 秒流速控制
             time.sleep(0.5)
             
-            # 7. 剔除低價值新聞
+            # 8. 剔除低價值新聞
             if importance == "⚪ 低":
                 continue
                 
