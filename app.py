@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 注入美化與對齊樣式
+# 基礎樣式：隱藏頂欄與底欄，設定適當內邊距
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -22,17 +22,11 @@ st.markdown("""
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
-    /* 讓 Checkbox 垂直置中對齊灰色輸入框 */
-    div[data-testid="stCheckbox"] {
-        margin-top: 28px !important;
-        display: flex;
-        align-items: center;
-    }
-    /* 縮小分頁按鈕寬度並緊湊排列 */
-    div[data-testid="column"] button {
-        padding: 2px 8px !important;
-        min-height: 32px !important;
-        height: 32px !important;
+    /* 修正分頁按鈕顯示，防止破圖與變形 */
+    .pag-btn button {
+        height: 36px !important;
+        padding: 0px 10px !important;
+        font-size: 14px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -300,13 +294,15 @@ with tab_news:
                 for log in st.session_state["last_fetch_logs"]:
                     st.write(log)
     
-    # 控列微調：修補對齊，並使 Checkbox 垂直置中
+    # 精準對齊：在「只看高重要性」上方補齊對齊空白點
     col_f1, col_f2, col_f3, col_f4 = st.columns([2.0, 1.2, 1.2, 1.2])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
         category_option = st.selectbox("新聞類別", ["全部", "財報", "重訊", "國際", "指數", "產業", "總經"])
     with col_f3:
+        # 使用小空白 padding 讓勾選框完美置中對齊灰色欄位
+        st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
         only_important = st.checkbox("只看高重要性 (🔴)", value=False)
     with col_f4:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
@@ -337,21 +333,25 @@ with tab_news:
 
         st.write(f"共呈現 **{total_items}** 筆過濾後的精選情報：")
 
-        # 縮小分頁按鈕並緊貼靠左
-        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([1.8, 0.3, 0.3, 5.6])
+        # 修正分頁比例：加大左側空間使文字保持單行，放寬按鈕避免擠壓破圖
+        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([4.0, 0.6, 0.6, 4.8])
         
         with col_p_label:
-            st.markdown(f'<div style="padding-top: 6px;">選擇頁碼：第 <b>{st.session_state["news_page"]}</b> / <b>{total_pages}</b> 頁（每頁 30 筆）</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="padding-top: 6px; white-space: nowrap;">選擇頁碼：第 <b>{st.session_state["news_page"]}</b> / <b>{total_pages}</b> 頁（每頁 30 筆）</div>', unsafe_allow_html=True)
             
         with col_btn_prev:
+            st.markdown('<div class="pag-btn">', unsafe_allow_html=True)
             if st.button("＜", use_container_width=True, disabled=(st.session_state["news_page"] <= 1)):
                 st.session_state["news_page"] -= 1
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
                 
         with col_btn_next:
+            st.markdown('<div class="pag-btn">', unsafe_allow_html=True)
             if st.button("＞", use_container_width=True, disabled=(st.session_state["news_page"] >= total_pages)):
                 st.session_state["news_page"] += 1
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
         current_page = st.session_state["news_page"]
         start_idx = (current_page - 1) * items_per_page
