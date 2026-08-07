@@ -23,6 +23,9 @@ TZ_TAIPEI = datetime.timezone(datetime.timedelta(hours=8))
 # 全局快取全台股字典
 GLOBAL_STOCKS_MAP = {}
 
+# 全局 API 熔斷開關
+AI_CIRCUIT_BROKEN = False
+
 # 1. 垃圾新聞與機器罐頭速報黑名單
 EXCLUDE_KEYWORDS = [
     "娛樂", "影劇", "星際", "星座", "八卦", "演唱會", "職棒", 
@@ -34,10 +37,10 @@ EXCLUDE_KEYWORDS = [
     "專頁", "頻道"
 ]
 
-# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（已加入「介面」防護）
+# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單
 AMBIGUOUS_STOCK_NAMES = {
     # 數量、量詞與程度動詞類
-    "大量", "精測", "極機", "飛銳"
+    "大量", "精測", "極機", "飛銳",
     # 抽象形容詞、技術術語與通用概念類
     "國產", "幸福", "大同", "大眾", "第一", "通用", "巨有", "正文", "威盛",
     "亞洲", "新光", "大亞", "高力", "金寶", "巨蛋", "統一", "富邦", "宏碁",
@@ -127,14 +130,14 @@ STOCKS_MAP = {
 }
 
 def load_all_taiwan_stocks():
-    """自動透過 FinMind API 下載最新全台股清單 (2000+ 支)"""
+    """自動透過 FinMind API 下載最新全台股清單"""
     global GLOBAL_STOCKS_MAP
     if GLOBAL_STOCKS_MAP:
         return GLOBAL_STOCKS_MAP
 
     url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
     try:
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, timeout=5)
         if res.status_code == 200:
             data = res.json().get("data", [])
             stocks = {}
@@ -263,7 +266,7 @@ def clean_url_params(url):
     return url.rstrip('?&')
 
 def parse_ai_response(text, title):
-    """精準清洗 AI 回傳，包含 6 大核心類型解析"""
+    """精準清洗 AI 回傳資料"""
     summary, importance, category = "", "⚪", "產業"
     for line in text.split("\n"):
         line_str = line.strip()
@@ -293,8 +296,23 @@ def parse_ai_response(text, title):
 
     return summary, importance, category, impact_companies, 1
 
+def fallback_rule_analysis(title):
+    """本地備援分析機制"""
+    has_catalyst = any(term in title for term in CATALYST_TERMS)
+    if not has_catalyst:
+        return "", "⚪", "產業", "", 0
+
+    matched_stock = extract_stocks_by_rules(title)
+    return "", "🟡", "產業", matched_stock, 0
+
 def analyze_news_with_ai(title, source):
-    """AI 同步產出重要性、一句話摘要與 6 大類別標籤"""
+    """AI 同步產出重要性、摘要與類別，並具備自動熔斷機制"""
+    global AI_CIRCUIT_BROKEN
+
+    # 若熔斷已觸發，直接進入本地規則分析
+    if AI_CIRCUIT_BROKEN:
+        return fallback_rule_analysis(title)
+
     prompt = f"""
     你是一個專業的台股操盤手。請評估以下新聞是否具備實質影響台股股價或產業預期的潛力：
     新聞標題：{title}
@@ -321,50 +339,57 @@ def analyze_news_with_ai(title, source):
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
+    # 1. 嘗試 Groq 70B (超時設為 4 秒)
     if groq_key:
         try:
-            client = Groq(api_key=groq_key)
+            client = Groq(api_key=groq_key, timeout=4.0)
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1
             )
             return parse_ai_response(response.choices[0].message.content.strip(), title)
-        except Exception:
-            pass
+        except Exception as e:
+            err_str = str(e).lower()
+            if "rate_limit" in err_str or "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
+                AI_CIRCUIT_BROKEN = True
+                return fallback_rule_analysis(title)
 
-    if gemini_key and HAS_GEMINI_SDK:
+    # 2. 嘗試 Gemini 1.5 Flash (超時設為 4 秒)
+    if gemini_key and HAS_GEMINI_SDK and not AI_CIRCUIT_BROKEN:
         try:
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
+            response = model.generate_content(prompt, request_options={'timeout': 4.0})
             return parse_ai_response(response.text.strip(), title)
-        except Exception:
-            pass
+        except Exception as e:
+            err_str = str(e).lower()
+            if "quota" in err_str or "resource_exhausted" in err_str or "429" in err_str:
+                AI_CIRCUIT_BROKEN = True
+                return fallback_rule_analysis(title)
 
-    if groq_key:
+    # 3. 嘗試 Groq 8B (超時設為 3 秒)
+    if groq_key and not AI_CIRCUIT_BROKEN:
         try:
-            client = Groq(api_key=groq_key)
+            client = Groq(api_key=groq_key, timeout=3.0)
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1
             )
             return parse_ai_response(response.choices[0].message.content.strip(), title)
-        except Exception:
-            pass
+        except Exception as e:
+            err_str = str(e).lower()
+            if "rate_limit" in err_str or "quota" in err_str or "429" in err_str:
+                AI_CIRCUIT_BROKEN = True
 
+    # 所有 AI API 均失敗或超時後降級回本地規則
     return fallback_rule_analysis(title)
 
-def fallback_rule_analysis(title):
-    has_catalyst = any(term in title for term in CATALYST_TERMS)
-    if not has_catalyst:
-        return "", "⚪", "產業", "", 0
-
-    matched_stock = extract_stocks_by_rules(title)
-    return "", "🟡", "產業", matched_stock, 0
-
 def fetch_and_store_news():
+    global AI_CIRCUIT_BROKEN
+    AI_CIRCUIT_BROKEN = False  # 新一輪任務開始時重置熔斷狀態
+    
     init_db()
     logs = []
     
@@ -421,8 +446,10 @@ def fetch_and_store_news():
                 
             summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            time.sleep(0.5)
-            
+            # 若 AI 正常運作且未熔斷，維持微小延遲以防過快；若已熔斷則零延遲運行
+            if is_ai == 1 and not AI_CIRCUIT_BROKEN:
+                time.sleep(0.2)
+                
             if importance == "⚪":
                 continue
                 
@@ -437,6 +464,10 @@ def fetch_and_store_news():
                 
     conn.commit()
     conn.close()
+    
+    if AI_CIRCUIT_BROKEN:
+        logs.append("【警告】檢測到 AI API 額度用盡或回應超時，已自動熔斷並切換至本地規則模式。")
+        
     logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
     return added_count, logs
 
