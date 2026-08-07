@@ -39,14 +39,11 @@ EXCLUDE_KEYWORDS = [
 
 # 2. 兼具日常高頻通用語義與技術術語之台股名稱清單
 AMBIGUOUS_STOCK_NAMES = {
-    # 數量、量詞與程度動詞類
     "大量", "精測", "極機", "飛銳",
-    # 抽象形容詞、技術術語與通用概念類
     "國產", "幸福", "大同", "大眾", "第一", "通用", "巨有", "正文", "威盛",
     "亞洲", "新光", "大亞", "高力", "金寶", "巨蛋", "統一", "富邦", "宏碁",
     "聯華", "東元", "中華", "台灣", "太平洋", "長榮", "萬海", "陽明", "佳醫",
     "介面", "材料", "應用", "控制", "系統", "軟體", "先進", "精技",
-    # 媒體名稱、出版與高頻詞彙類
     "時報", "商訊", "中央", "優買", "精業"
 }
 
@@ -81,7 +78,7 @@ CATALYST_TERMS = [
     "關稅壁壘", "聯準會"
 ]
 
-# 5. 無 AI 備援模式下的台股重點對照表（備援字典）
+# 5. 無 AI 備援模式下的台股重點對照表
 STOCKS_MAP = {
     "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)", "世界": "世界(5347)",
     "日月光投控": "日月光投控(3711)", "日月光": "日月光投控(3711)", "京元電子": "京元電子(2449)",
@@ -210,7 +207,6 @@ def init_db():
         except Exception:
             pass
 
-        # 1. 確保基本表格存在
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS news (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,7 +218,6 @@ def init_db():
         """)
         conn.commit()
 
-        # 2. 強制執行 ALTER TABLE 補齊欄位
         alter_queries = [
             "ALTER TABLE news ADD COLUMN summary TEXT;",
             "ALTER TABLE news ADD COLUMN importance TEXT;",
@@ -326,7 +321,6 @@ def fallback_rule_analysis(title):
 
     matched_stock = extract_stocks_by_rules(title)
     
-    # 基礎類別推論
     category = "產業"
     if any(k in title for k in ["營收", "財報", "獲利", "EPS", "毛利率"]):
         category = "財報"
@@ -342,13 +336,12 @@ def fallback_rule_analysis(title):
     return "", "🟡", category, matched_stock, 0
 
 def analyze_news_with_ai(title, source):
-    """AI 分析功能，具備超時限制與額度耗盡自動熔斷機制"""
+    """多層 AI 接力鏈：Groq -> Gemini -> Cerebras -> OpenRouter -> 本地規則"""
     global AI_CIRCUIT_BROKEN
 
     if AI_CIRCUIT_BROKEN:
         return fallback_rule_analysis(title)
 
-    # 壓低 TPM：精簡 Prompt 說明與定義，大幅節省 Input Token
     prompt = f"""
 評估新聞對台股影響：
 標題：{title}
@@ -368,6 +361,8 @@ def analyze_news_with_ai(title, source):
     
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
+    cerebras_key = os.environ.get("CEREBRAS_API_KEY")
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
 
     # 1. 嘗試 Groq 70B (超時 4 秒)
     if groq_key:
@@ -379,40 +374,60 @@ def analyze_news_with_ai(title, source):
                 temperature=0.1
             )
             return parse_ai_response(response.choices[0].message.content.strip(), title)
-        except Exception as e:
-            err_str = str(e).lower()
-            if any(k in err_str for k in ["rate_limit", "quota", "429", "resource_exhausted"]):
-                AI_CIRCUIT_BROKEN = True
-                return fallback_rule_analysis(title)
+        except Exception:
+            pass # 出錯順延下一個
 
     # 2. 嘗試 Gemini 1.5 Flash (超時 4 秒)
-    if gemini_key and HAS_GEMINI_SDK and not AI_CIRCUIT_BROKEN:
+    if gemini_key and HAS_GEMINI_SDK:
         try:
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt, request_options={'timeout': 4.0})
             return parse_ai_response(response.text.strip(), title)
-        except Exception as e:
-            err_str = str(e).lower()
-            if any(k in err_str for k in ["quota", "resource_exhausted", "429"]):
-                AI_CIRCUIT_BROKEN = True
-                return fallback_rule_analysis(title)
+        except Exception:
+            pass
 
-    # 3. 嘗試 Groq 8B (超時 3 秒)
-    if groq_key and not AI_CIRCUIT_BROKEN:
+    # 3. 嘗試 Cerebras Cloud (超時 4 秒，OpenAI 相容)
+    if cerebras_key:
         try:
-            client = Groq(api_key=groq_key, timeout=3.0)
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            return parse_ai_response(response.choices[0].message.content.strip(), title)
+            headers = {
+                "Authorization": f"Bearer {cerebras_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "llama3.1-8b",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1
+            }
+            res = requests.post("https://api.cerebras.ai/v1/chat/completions", headers=headers, json=payload, timeout=4.0)
+            if res.status_code == 200:
+                content = res.json()["choices"][0]["message"]["content"].strip()
+                return parse_ai_response(content, title)
+        except Exception:
+            pass
+
+    # 4. 嘗試 OpenRouter (超時 4 秒，自動引導免費模型路由)
+    if openrouter_key:
+        try:
+            headers = {
+                "Authorization": f"Bearer {openrouter_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "openrouter/free",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1
+            }
+            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=4.0)
+            if res.status_code == 200:
+                content = res.json()["choices"][0]["message"]["content"].strip()
+                return parse_ai_response(content, title)
         except Exception as e:
             err_str = str(e).lower()
             if any(k in err_str for k in ["rate_limit", "quota", "429"]):
                 AI_CIRCUIT_BROKEN = True
 
+    # 所有 AI 接力失敗，最終啟動熔斷並落入本地規則
     return fallback_rule_analysis(title)
 
 def fetch_and_store_news():
@@ -425,7 +440,7 @@ def fetch_and_store_news():
     
     added_count = 0
     total_fetched = 0
-    ai_process_count = 0  # 控制單次 AI 處理總量計數器
+    ai_process_count = 0
     
     media_targets = [
         ("工商時報", "site:ctee.com.tw"),
@@ -477,14 +492,14 @@ def fetch_and_store_news():
                         conn.commit()
                         continue
 
-                # 壓低 RPM：單次執行若超過 15 篇 AI 處理數量，自動轉為本地規則，避免擠爆 API 配額
-                if ai_process_count >= 15:
+                # 配額保護：單次處理超過 20 篇後自動走規則
+                if ai_process_count >= 20:
                     summary, importance, category, impact_companies, is_ai = fallback_rule_analysis(title)
                 else:
                     summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
                     if is_ai == 1 and not AI_CIRCUIT_BROKEN:
                         ai_process_count += 1
-                        time.sleep(2.0)  # 壓低 RPM：拉長請求間隔至 2 秒
+                        time.sleep(1.5)  # 各平台均分請求，適度保留 1.5 秒安全間隔
                     
                 if importance == "⚪":
                     continue
