@@ -325,7 +325,21 @@ def fallback_rule_analysis(title):
         return "", "⚪", "產業", "", 0
 
     matched_stock = extract_stocks_by_rules(title)
-    return "", "🟡", "產業", matched_stock, 0
+    
+    # 基礎類別推論
+    category = "產業"
+    if any(k in title for k in ["營收", "財報", "獲利", "EPS", "毛利率"]):
+        category = "財報"
+    elif any(k in title for k in ["法說", "庫藏股", "減資", "增資", "併購", "重訊"]):
+        category = "重訊"
+    elif any(k in title for k in ["美股", "Fed", "關稅", "地緣"]):
+        category = "國際"
+    elif any(k in title for k in ["大盤", "台指", "法人", "外資"]):
+        category = "指數"
+    elif any(k in title for k in ["央行", "利率", "通膨", "CPI"]):
+        category = "總經"
+
+    return "", "🟡", category, matched_stock, 0
 
 def analyze_news_with_ai(title, source):
     """AI 分析功能，具備超時限制與額度耗盡自動熔斷機制"""
@@ -491,11 +505,10 @@ def fetch_and_store_news():
     logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
     return added_count, logs
 
-def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
-    """安全讀取新聞資料庫（回傳精準對齊 app.py 314 行的 9 個欄位）"""
+def get_news_from_db(search_query="", limit=200, importance_filter=None, sort_by="時間新到舊"):
+    """安全讀取新聞資料庫（回傳對齊 app.py 的 9 個欄位，預設上限提升至 200 筆）"""
     init_db()
     
-    # 這裡選擇 9 個欄位，完全對齊 app.py 解包數量
     sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
