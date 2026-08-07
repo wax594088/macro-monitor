@@ -201,55 +201,45 @@ def extract_stocks_by_rules(title):
     return res_str
 
 def init_db():
-    """初始化資料庫，包含強制建表與補齊缺漏欄位邏輯"""
-    try:
-        with sqlite3.connect("news.db", timeout=20.0) as conn:
-            cursor = conn.cursor()
-            
+    """初始化資料庫並強制完成專用 Schema 補齊"""
+    with sqlite3.connect("news.db", timeout=20.0) as conn:
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+        except Exception:
+            pass
+
+        # 1. 確保基本表格存在
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE,
+                title TEXT,
+                source TEXT,
+                published_date TEXT
+            )
+        """)
+        conn.commit()
+
+        # 2. 強制執行 ALTER TABLE 補齊所有可能缺少的欄位（重複新增則靜態忽略）
+        alter_queries = [
+            "ALTER TABLE news ADD COLUMN summary TEXT;",
+            "ALTER TABLE news ADD COLUMN importance TEXT;",
+            "ALTER TABLE news ADD COLUMN category TEXT;",
+            "ALTER TABLE news ADD COLUMN impact_companies TEXT;",
+            "ALTER TABLE news ADD COLUMN report_count INTEGER DEFAULT 1;",
+            "ALTER TABLE news ADD COLUMN is_ai INTEGER DEFAULT 1;"
+        ]
+
+        for query in alter_queries:
             try:
-                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute(query)
+                conn.commit()
             except sqlite3.OperationalError:
+                # 欄位已存在時會觸發此例外，直接忽略即可
                 pass
 
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS news (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    url TEXT UNIQUE,
-                    title TEXT,
-                    source TEXT,
-                    published_date TEXT,
-                    summary TEXT,
-                    importance TEXT,
-                    category TEXT,
-                    impact_companies TEXT,
-                    report_count INTEGER DEFAULT 1,
-                    is_ai INTEGER DEFAULT 1
-                )
-            """)
-
-            # 檢查並自動補充缺少的欄位
-            cursor.execute("PRAGMA table_info(news);")
-            existing_cols = [col[1] for col in cursor.fetchall()]
-
-            required_cols = {
-                "summary": "TEXT",
-                "importance": "TEXT",
-                "category": "TEXT",
-                "impact_companies": "TEXT",
-                "report_count": "INTEGER DEFAULT 1",
-                "is_ai": "INTEGER DEFAULT 1"
-            }
-
-            for col_name, col_type in required_cols.items():
-                if col_name not in existing_cols:
-                    try:
-                        cursor.execute(f"ALTER TABLE news ADD COLUMN {col_name} {col_type};")
-                    except Exception:
-                        pass
-
-            conn.commit()
-    except Exception:
-        pass
     clean_old_news()
 
 def clean_old_news():
@@ -263,16 +253,20 @@ def clean_old_news():
         pass
 
 def clear_all_news():
-    """徹底刪除舊表並重新建表，徹底清除缺欄位引起的 sqlite3 錯誤"""
+    """徹底刪除 news.db 實體檔案，重建最乾淨的 Schema」"""
     try:
-        with sqlite3.connect("news.db", timeout=20.0) as conn:
-            cursor = conn.cursor()
-            cursor.execute("DROP TABLE IF EXISTS news;")
-            conn.commit()
-        init_db()
-        return True
+        if os.path.exists("news.db"):
+            os.remove("news.db")
+        # 同步清理 WAL 快取檔
+        if os.path.exists("news.db-wal"):
+            os.remove("news.db-wal")
+        if os.path.exists("news.db-shm"):
+            os.remove("news.db-shm")
     except Exception:
-        return False
+        pass
+
+    init_db()
+    return True
 
 def parse_pub_date(published_str):
     try:
@@ -415,9 +409,9 @@ def analyze_news_with_ai(title, source):
     return fallback_rule_analysis(title)
 
 def fetch_and_store_news():
-    """抓取新聞、進行 AI 解析並儲存至 SQLite，具備安全併發與 Migration 控制"""
+    """抓取新聞、進行 AI 解析並儲存至 SQLite"""
     global AI_CIRCUIT_BROKEN
-    AI_CIRCUIT_BROKEN = False  # 每輪啟動重置熔斷狀態
+    AI_CIRCUIT_BROKEN = False
     
     init_db()
     logs = []
@@ -500,7 +494,7 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
-    """純讀取新聞資料庫，具備容錯修補機制"""
+    """安全讀取新聞資料庫」"""
     init_db()
     
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
@@ -527,5 +521,5 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
             cursor = conn.cursor()
             cursor.execute(sql, params)
             return cursor.fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         return []
