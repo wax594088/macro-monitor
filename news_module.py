@@ -303,14 +303,17 @@ def fetch_and_store_news():
                     news_id = existing[0]
                     cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
                     continue
+            # 4. 網址缺乏文章路徑（非單篇新聞）時自動跳過
+            if "cnyes.com" in url and "/news/id/" not in url:
+                continue
                 
-            # 4. 呼叫 AI 或規則庫解析新聞
+            # 5. 呼叫 AI 或規則庫解析新聞
             summary, importance, impact_companies, is_ai = analyze_news_with_ai(title, source)
             
-            # 每篇加入 0.5 秒流速控制
+            # 6. 每篇加入 0.5 秒流速控制
             time.sleep(0.5)
             
-            # 5. 剔除低價值新聞
+            # 7. 剔除低價值新聞
             if importance == "⚪ 低":
                 continue
                 
