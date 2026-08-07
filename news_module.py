@@ -59,7 +59,7 @@ CATALYST_TERMS = [
     "關稅壁壘", "聯準會"
 ]
 
-# 3. 無 AI 備援模式下的台股重點對照表 (可持續擴充)
+# 3. 無 AI 備援模式下的台股重點對照表
 STOCKS_MAP = {
     # 晶圓代工 / 封測 / 設備 / 廠務
     "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)", "世界": "世界(5347)",
@@ -127,7 +127,6 @@ STOCKS_MAP = {
     "台新金": "台新金(2887)", "永豐金": "永豐金(2890)", "第一金": "第一金(2892)",
     "華南金": "華南金(2880)", "開發金": "凱基金(2883)", "凱基金": "凱基金(2883)",
     "合庫金": "合庫金(5880)", "上海商銀": "上海商銀(5876)"
-}
 }
 
 def clean_old_news():
@@ -241,12 +240,20 @@ def fallback_rule_analysis(title):
     if not has_catalyst:
         return "", "⚪ 低", "", 0
 
-    # 2. 股票代號與公司名稱匹配
     matched_stock = ""
-    match = re.search(r'([\u4e00-\u9fa5\w]+)\((\d{4})\)', title)
-    if match:
-        matched_stock = f"{match.group(1)}({match.group(2)})"
+    
+    # 2. 多重正則表達式比對格式：
+    # 模式 A: 台積電(2330) 或 台積電（2330）
+    match_a = re.search(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', title)
+    # 模式 B: 2330台積電 或 2330 台積電
+    match_b = re.search(r'(\d{4})\s*([\u4e00-\u9fa5\w\-]+)', title)
+    
+    if match_a:
+        matched_stock = f"{match_a.group(1)}({match_a.group(2)})"
+    elif match_b and len(match_b.group(2)) >= 2:
+        matched_stock = f"{match_b.group(2)}({match_b.group(1)})"
     else:
+        # 模式 C: 比對對照表字典
         for k, v in STOCKS_MAP.items():
             if k in title:
                 matched_stock = v
