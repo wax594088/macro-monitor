@@ -222,7 +222,7 @@ def init_db():
         """)
         conn.commit()
 
-        # 2. 強制執行 ALTER TABLE 補齊所有可能缺少的欄位（重複新增則靜態忽略）
+        # 2. 強制執行 ALTER TABLE 補齊欄位
         alter_queries = [
             "ALTER TABLE news ADD COLUMN summary TEXT;",
             "ALTER TABLE news ADD COLUMN importance TEXT;",
@@ -237,7 +237,6 @@ def init_db():
                 cursor.execute(query)
                 conn.commit()
             except sqlite3.OperationalError:
-                # 欄位已存在時會觸發此例外，直接忽略即可
                 pass
 
     clean_old_news()
@@ -253,11 +252,10 @@ def clean_old_news():
         pass
 
 def clear_all_news():
-    """徹底刪除 news.db 實體檔案，重建最乾淨的 Schema」"""
+    """徹底刪除 news.db 實體檔案，重建 Schema"""
     try:
         if os.path.exists("news.db"):
             os.remove("news.db")
-        # 同步清理 WAL 快取檔
         if os.path.exists("news.db-wal"):
             os.remove("news.db-wal")
         if os.path.exists("news.db-shm"):
@@ -494,10 +492,11 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
-    """安全讀取新聞資料庫」"""
+    """安全讀取新聞資料庫（回傳精準對齊 app.py 314 行的 9 個欄位）"""
     init_db()
     
-    sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
+    # 這裡選擇 9 個欄位，完全對齊 app.py 解包數量
+    sql = "SELECT published_date, title, source, url, summary, importance, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
     
     if search_query:
