@@ -36,7 +36,7 @@ if st.sidebar.button("🗑️ 清除所有新聞並重置資料庫"):
     else:
         st.sidebar.error("清除失敗，請檢查資料庫狀態。")
 
-tab_home, tab_analysis, tab_news = st.tabs(["首頁", "產業鏈分析", "新聞市況彙整"])
+tab_home, tab_analysis, tab_news = st.tabs(["首頁","新聞市況彙整" ,"產業鏈分析" ])
 
 with tab_home:
     stlfsi_data = mm.get_fred_data("STLFSI4", 2.0, True, api_key)
