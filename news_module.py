@@ -6,6 +6,7 @@ import re
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from groq import Groq
 from email.utils import parsedate_to_datetime
 import datetime
@@ -34,17 +35,17 @@ EXCLUDE_KEYWORDS = [
     "專頁", "頻道"
 ]
 
-# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（已加入「介面」防護）
+# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（含「介面」防護）
 AMBIGUOUS_STOCK_NAMES = {
     # 數量、量詞與程度動詞類
-    "大量", "精測", "極機", "創威", "飛銳", "波若威", "廣宇", "廣達", "宏達",
+    "大量", "精測", "極機", "飛銳"
     # 抽象形容詞、技術術語與通用概念類
     "國產", "幸福", "大同", "大眾", "第一", "通用", "巨有", "正文", "威盛",
     "亞洲", "新光", "大亞", "高力", "金寶", "巨蛋", "統一", "富邦", "宏碁",
     "聯華", "東元", "中華", "台灣", "太平洋", "長榮", "萬海", "陽明", "佳醫",
     "介面", "材料", "應用", "控制", "系統", "軟體", "先進", "精技",
     # 媒體名稱、出版與高頻詞彙類
-    "時報", "商訊", "中央", "優買", "精業", "台亞", "台塑", "台化", "南亞"
+    "時報", "商訊", "中央", "優買", "精業"
 }
 
 # 3. 高頻權值股新聞簡稱對照表
@@ -364,11 +365,65 @@ def fallback_rule_analysis(title):
     matched_stock = extract_stocks_by_rules(title)
     return "", "🟡", "產業", matched_stock, 0
 
+def process_single_news(entry, media_name, cursor, conn):
+    """單篇新聞處理工作函數（供多執行緒平行調用）"""
+    title = entry.title
+    url = clean_url_params(entry.link)
+    source = entry.get('source', {}).get('title', media_name)
+    raw_published = entry.get('published', '')
+    published = parse_pub_date(raw_published)
+    
+    # 1. 黑名單過濾
+    if any(ex in title for ex in EXCLUDE_KEYWORDS):
+        return 0
+
+    # 2. 攔截無效首頁標題
+    clean_t = clean_title_from_comparison = clean_title_for_comparison(title)
+    invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
+    if title.strip() in invalid_titles or len(clean_t) < 5:
+        return 0
+
+    # 3. 網址無效路徑跳過
+    if "cnyes.com" in url and "/news/id/" not in url:
+        return 0
+        
+    # 4. 網址重複跳過
+    cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
+    if cursor.fetchone():
+        return 0
+
+    # 5. 標題完全一致比對，重複更新發布時間與曝光數
+    if clean_t and len(clean_t) >= 6:
+        cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
+        existing = cursor.fetchone()
+        if existing:
+            news_id = existing[0]
+            cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
+            conn.commit()
+            return 0
+        
+    # 6. AI 或規則解析
+    summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
+    
+    # 7. 剔除低價值新聞
+    if importance == "⚪":
+        return 0
+        
+    try:
+        cursor.execute("""
+            INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        """, (url, title, source, published, summary, importance, category, impact_companies, is_ai))
+        conn.commit()
+        return 1
+    except Exception:
+        return 0
+
 def fetch_and_store_news():
     init_db()
     logs = []
     
-    conn = sqlite3.connect("news.db")
+    conn = sqlite3.connect("news.db", timeout=30)
     cursor = conn.cursor()
     added_count = 0
     total_fetched = 0
@@ -379,6 +434,7 @@ def fetch_and_store_news():
         ("鉅亨網", "site:cnyes.com")
     ]
     
+    all_tasks = []
     for media_name, media_site in media_targets:
         query_with_time = f"{media_site} when:3d"
         encoded_query = urllib.parse.quote(query_with_time)
@@ -390,54 +446,19 @@ def fetch_and_store_news():
         logs.append(f"【檢索】{media_name}（近三天抓取到 {site_fetched} 篇原始新聞）")
         
         for entry in feed.entries:
-            title = entry.title
-            url = clean_url_params(entry.link)
-            source = entry.get('source', {}).get('title', media_name)
-            raw_published = entry.get('published', '')
-            published = parse_pub_date(raw_published)
+            all_tasks.append((entry, media_name))
             
-            if any(ex in title for ex in EXCLUDE_KEYWORDS):
-                continue
-
-            clean_t = clean_title_for_comparison(title)
-            invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
-            if title.strip() in invalid_titles or len(clean_t) < 5:
-                continue
-
-            if "cnyes.com" in url and "/news/id/" not in url:
-                continue
-                
-            cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-            if cursor.fetchone():
-                continue
-
-            if clean_t and len(clean_t) >= 6:
-                cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
-                existing = cursor.fetchone()
-                if existing:
-                    news_id = existing[0]
-                    cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
-                    continue
-                
-            summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
-            
-            time.sleep(0.5)
-            
-            if importance == "⚪":
-                continue
-                
+    # 使用 ThreadPoolExecutor 平行化處理 AI 解析與寫入（設定 5 個執行緒加速）
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(process_single_news, entry, media_name, cursor, conn) for entry, media_name in all_tasks]
+        for future in as_completed(futures):
             try:
-                cursor.execute("""
-                    INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """, (url, title, source, published, summary, importance, category, impact_companies, is_ai))
-                added_count += 1
-            except Exception as e:
-                logs.append(f"寫入資料庫錯誤: {e}")
+                added_count += future.result()
+            except Exception:
+                pass
                 
-    conn.commit()
     conn.close()
-    logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
+    logs.append(f"【執行結果】三大媒體總計抓取 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆（已透過多執行緒加速）。")
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
