@@ -132,18 +132,21 @@ def load_all_taiwan_stocks():
     return STOCKS_MAP
 
 def extract_stocks_by_rules(title):
-    """由 Python 完全主導拿新聞標題比對全台股清單，根除 AI 瞎掰"""
+    """由 Python 完全主導拿新聞標題比對全台股清單，並預先裁切媒體名稱後綴"""
+    # 1. 裁切標題後方的分類與媒體名稱（如 - 生活 - 工商時報）
+    pure_title = re.sub(r'\s*-\s*.*$', '', title).strip()
+    
     stocks_map = load_all_taiwan_stocks()
     matched = []
     
-    # 優先比對標題內已包含括號之格式（例：宜鼎(5289)）
-    match_code = re.findall(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', title)
+    # 2. 優先比對標題內已包含括號之格式（例：宜鼎(5289)）
+    match_code = re.findall(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', pure_title)
     for name, code in match_code:
         matched.append(f"{name}({code})")
 
-    # 拿全台股資料庫進行標題匹配
+    # 3. 僅拿去除媒體名稱後的主標題進行台股比對
     for name, full_str in stocks_map.items():
-        if len(name) >= 2 and name in title and full_str not in matched:
+        if len(name) >= 2 and name in pure_title and full_str not in matched:
             matched.append(full_str)
 
     res_str = "、".join(matched) if matched else ""
