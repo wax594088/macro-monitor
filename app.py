@@ -267,6 +267,7 @@ with tab_news:
         if nm.clear_all_news():
             st.session_state.pop("last_fetch_success", None)
             st.session_state.pop("last_fetch_logs", None)
+            st.session_state["news_page"] = 1
             st.success("資料庫已成功清空！")
             st.rerun()
         else:
@@ -286,15 +287,16 @@ with tab_news:
                 for log in st.session_state["last_fetch_logs"]:
                     st.write(log)
     
-    st.divider()
-
-    col_f1, col_f2, col_f3 = st.columns([2.2, 1.2, 1.2])
+    # 移除原本多餘的空白分隔線，直接緊銜接搜尋與排版篩選列
+    col_f1, col_f2, col_f3, col_f4 = st.columns([2.0, 1.2, 1.2, 1.2])
     with col_f1:
         search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
+        category_option = st.selectbox("新聞類別", ["全部", "財報", "重訊", "國際", "指數", "產業", "總經"])
+    with col_f3:
         st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
         only_important = st.checkbox("只看高重要性 (🔴)", value=False)
-    with col_f3:
+    with col_f4:
         sort_option = st.selectbox("排序方式", ["時間新到舊", "重要性優先"])
         
     importance_target = "🔴" if only_important else None
@@ -304,6 +306,7 @@ with tab_news:
         search_query=search_query, 
         limit=200, 
         importance_filter=importance_target, 
+        category_filter=category_option,
         sort_by=sort_option
     )
     
@@ -314,28 +317,39 @@ with tab_news:
         items_per_page = 30
         total_pages = math.ceil(total_items / items_per_page) if total_items > 0 else 1
 
+        # 初始化 Session State 分頁器
+        if "news_page" not in st.session_state:
+            st.session_state["news_page"] = 1
+            
+        # 防止過濾條件改變時頁碼超出範圍
+        if st.session_state["news_page"] > total_pages:
+            st.session_state["news_page"] = 1
+
         st.write(f"共呈現 **{total_items}** 筆過濾後的精選情報：")
 
-        # 分頁控制介面
-        col_p1, col_p2 = st.columns([1, 3])
-        with col_p1:
-            current_page = st.number_input(
-                "選擇頁碼", 
-                min_value=1, 
-                max_value=total_pages, 
-                value=1, 
-                step=1
-            )
-        with col_p2:
-            st.markdown(f'<div style="padding-top: 28px;">第 <b>{current_page}</b> / <b>{total_pages}</b> 頁（每頁顯示 {items_per_page} 筆）</div>', unsafe_allow_html=True)
+        # 簡化分頁介面：改為前後箭頭 ( < > ) 按鈕
+        col_p_label, col_btn_prev, col_btn_next, col_p_empty = st.columns([3, 0.5, 0.5, 4])
+        
+        with col_p_label:
+            st.markdown(f'<div style="padding-top: 6px;">選擇頁碼：第 <b>{st.session_state["news_page"]}</b> / <b>{total_pages}</b> 頁（每頁 30 筆）</div>', unsafe_allow_html=True)
+            
+        with col_btn_prev:
+            if st.button("＜", use_container_width=True, disabled=(st.session_state["news_page"] <= 1)):
+                st.session_state["news_page"] -= 1
+                st.rerun()
+                
+        with col_btn_next:
+            if st.button("＞", use_container_width=True, disabled=(st.session_state["news_page"] >= total_pages)):
+                st.session_state["news_page"] += 1
+                st.rerun()
 
         # 取得當前頁面的資料切片
+        current_page = st.session_state["news_page"]
         start_idx = (current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
         page_rows = news_rows[start_idx:end_idx]
 
         for row in page_rows:
-            # 完整解包 SQL 回傳之 10 個欄位（包含 category）
             date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
@@ -350,7 +364,6 @@ with tab_news:
                 else:
                     st.markdown("💡 **核心摘要**：[AI額度已滿，無摘要]")
                 
-                # 新增渲染：顯示新聞類別
                 cat_text = category if (category and category.strip()) else "產業"
                 st.markdown(f"📁 **新聞類別**：{cat_text}")
 
