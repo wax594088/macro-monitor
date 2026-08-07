@@ -288,7 +288,7 @@ with tab_news:
 
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
-        search_query = st.text_input("搜尋關鍵字（例如：台積電、無人機、2330）", "")
+        search_query = st.text_input("搜尋關鍵字", "")
     with col_f2:
         only_important = st.checkbox("只看高重要性 (🔴 高)", value=False)
     with col_f3:
