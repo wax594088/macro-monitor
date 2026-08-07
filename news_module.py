@@ -237,10 +237,11 @@ def init_db():
     clean_old_news()
 
 def clean_old_news():
+    """清除超過 2 天的過期新聞"""
     try:
         with sqlite3.connect("news.db", timeout=20.0) as conn:
             cursor = conn.cursor()
-            cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+            cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
             conn.commit()
     except Exception:
@@ -375,7 +376,7 @@ def analyze_news_with_ai(title, source):
             )
             return parse_ai_response(response.choices[0].message.content.strip(), title)
         except Exception:
-            pass # 出錯順延下一個
+            pass
 
     # 2. 嘗試 Gemini 1.5 Flash (超時 4 秒)
     if gemini_key and HAS_GEMINI_SDK:
@@ -452,14 +453,15 @@ def fetch_and_store_news():
         cursor = conn.cursor()
         
         for media_name, media_site in media_targets:
-            query_with_time = f"{media_site} when:3d"
+            # 調整為僅抓取近 2 天 (48小時) 的新聞
+            query_with_time = f"{media_site} when:2d"
             encoded_query = urllib.parse.quote(query_with_time)
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
             
             feed = feedparser.parse(rss_url)
             site_fetched = len(feed.entries)
             total_fetched += site_fetched
-            logs.append(f"【檢索】{media_name}（近三天抓取到 {site_fetched} 篇原始新聞）")
+            logs.append(f"【檢索】{media_name}（近兩天抓取到 {site_fetched} 篇原始新聞）")
             
             for entry in feed.entries:
                 title = entry.title
@@ -499,7 +501,7 @@ def fetch_and_store_news():
                     summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
                     if is_ai == 1 and not AI_CIRCUIT_BROKEN:
                         ai_process_count += 1
-                        time.sleep(1.5)  # 各平台均分請求，適度保留 1.5 秒安全間隔
+                        time.sleep(1.5)
                     
                 if importance == "⚪":
                     continue
@@ -521,7 +523,7 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=200, importance_filter=None, sort_by="時間新到舊"):
-    """安全讀取新聞資料庫（回傳對齊 app.py 的 9 個欄位，預設上限提升至 200 筆）"""
+    """安全讀取新聞資料庫（回傳對齊 app.py 的 10 個欄位，預設上限提升至 200 筆）"""
     init_db()
     
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
