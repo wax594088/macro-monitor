@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
+import math
 
 import macro_module as mm
 import news_module as nm
@@ -36,7 +37,7 @@ if st.sidebar.button("🗑️ 清除所有新聞並重置資料庫"):
     else:
         st.sidebar.error("清除失敗，請檢查資料庫狀態。")
 
-# 修正：正確宣告三個頁籤變數名稱與順序
+# 正確宣告三個頁籤變數名稱與順序
 tab_home, tab_news, tab_analysis = st.tabs(["首頁", "新聞市況彙整", "產業鏈分析"])
 
 with tab_home:
@@ -298,9 +299,10 @@ with tab_news:
         
     importance_target = "🔴" if only_important else None
     
+    # 讀取最多 200 筆新聞進行分頁顯示
     news_rows = nm.get_news_from_db(
         search_query=search_query, 
-        limit=30, 
+        limit=200, 
         importance_filter=importance_target, 
         sort_by=sort_option
     )
@@ -308,9 +310,31 @@ with tab_news:
     if not news_rows:
         st.info("目前資料庫中沒有符合條件的高價值情報，請點擊上方按鈕執行抓取或調整篩選條件。")
     else:
-        st.write(f"共呈現 **{len(news_rows)}** 筆過濾後的精選情報：")
-        
-        for row in news_rows:
+        total_items = len(news_rows)
+        items_per_page = 30
+        total_pages = math.ceil(total_items / items_per_page) if total_items > 0 else 1
+
+        st.write(f"共呈現 **{total_items}** 筆過濾後的精選情報：")
+
+        # 分頁控制介面
+        col_p1, col_p2 = st.columns([1, 3])
+        with col_p1:
+            current_page = st.number_input(
+                "選擇頁碼", 
+                min_value=1, 
+                max_value=total_pages, 
+                value=1, 
+                step=1
+            )
+        with col_p2:
+            st.markdown(f'<div style="padding-top: 28px;">第 <b>{current_page}</b> / <b>{total_pages}</b> 頁（每頁顯示 {items_per_page} 筆）</div>', unsafe_allow_html=True)
+
+        # 取得當前頁面的資料切片
+        start_idx = (current_page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        page_rows = news_rows[start_idx:end_idx]
+
+        for row in page_rows:
             date, title, source, url, summary, importance, impact_companies, report_count, is_ai = row
             
             with st.container(border=True):
