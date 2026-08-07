@@ -34,7 +34,26 @@ EXCLUDE_KEYWORDS = [
     "專頁", "頻道"
 ]
 
-# 2. 無 AI 備援模式下的實質基本面與催化劑觸發詞
+# 2. 兼具日常高頻通用語義與技術術語之台股名稱清單（禁止純文字比對，僅允許標題帶有股票代號時匹配）
+AMBIGUOUS_STOCK_NAMES = {
+    # 數量、量詞與程度動詞類
+    "大量", "精測", "極機", "創威", "飛銳", "波若威", "廣宇", "廣達", "宏達",
+    # 抽象形容詞、技術術語與通用概念類
+    "國產", "幸福", "大同", "大眾", "第一", "通用", "巨有", "正文", "威盛",
+    "亞洲", "新光", "大亞", "高力", "金寶", "巨蛋", "統一", "富邦", "宏碁",
+    "聯華", "東元", "中華", "台灣", "太平洋", "長榮", "萬海", "陽明", "佳醫",
+    "介面", "材料", "應用", "控制", "系統", "軟體", "先進", "精技",
+    # 媒體名稱、出版與高頻詞彙類
+    "時報", "商訊", "中央", "優買", "精業", "台亞", "台塑", "台化", "南亞"
+}
+
+# 3. 高頻權值股新聞簡稱對照表
+ALIAS_STOCK_MAP = {
+    "台積": "台積電(2330)",
+    "發科": "聯發科(2454)"
+}
+
+# 4. 無 AI 備援模式下的實質基本面與催化劑觸發詞
 CATALYST_TERMS = [
     "營收", "財報", "獲利", "毛利率", "單月EPS", "EPS", "轉虧為盈", "虧轉盈", 
     "大單", "訂單", "擴產", "庫存去化", "急單", "創高", "新高", "爆單", "停利",
@@ -59,7 +78,7 @@ CATALYST_TERMS = [
     "關稅壁壘", "聯準會"
 ]
 
-# 3. 無 AI 備援模式下的台股重點對照表（備援字典）
+# 5. 無 AI 備援模式下的台股重點對照表（備援字典）
 STOCKS_MAP = {
     "台積電": "台積電(2330)", "聯電": "聯電(2303)", "力積電": "力積電(6770)", "世界": "世界(5347)",
     "日月光投控": "日月光投控(3711)", "日月光": "日月光投控(3711)", "京元電子": "京元電子(2449)",
@@ -103,11 +122,12 @@ STOCKS_MAP = {
     "兆豐金": "兆豐金(2886)", "玉山金": "玉山金(2884)", "元大金": "元大金(2885)",
     "台新金": "台新金(2887)", "永豐金": "永豐金(2890)", "第一金": "第一金(2892)",
     "華南金": "華南金(2880)", "開發金": "凱基金(2883)", "凱基金": "凱基金(2883)",
-    "合庫金": "合庫金(5880)", "上海商銀": "上海商銀(5876)"
+    "合庫金": "合庫金(5880)", "上海商銀": "上海商銀(5876)",
+    "中華資安": "中華資安(7765)"
 }
 
 def load_all_taiwan_stocks():
-    """自動透過 FinMind API 免費下載臺灣證券交易所與櫃買中心最新全台股清單 (2000+ 支)"""
+    """自動透過 FinMind API 下載最新全台股清單 (2000+ 支)"""
     global GLOBAL_STOCKS_MAP
     if GLOBAL_STOCKS_MAP:
         return GLOBAL_STOCKS_MAP
@@ -132,26 +152,53 @@ def load_all_taiwan_stocks():
     return STOCKS_MAP
 
 def extract_stocks_by_rules(title):
-    """由 Python 完全主導拿新聞標題比對全台股清單，並預先裁切媒體名稱後綴"""
-    # 1. 裁切標題後方的分類與媒體名稱（如 - 生活 - 工商時報）
+    """由 Python 主導比對全台股清單，優先比對長字串並剔除子字串重疊與通用詞"""
+    # 1. 裁切標題後方的分類與媒體名稱（如 - 日報 - 工商時報）
     pure_title = re.sub(r'\s*-\s*.*$', '', title).strip()
     
     stocks_map = load_all_taiwan_stocks()
     matched = []
-    
-    # 2. 優先比對標題內已包含括號之格式（例：宜鼎(5289)）
-    match_code = re.findall(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', pure_title)
-    for name, code in match_code:
-        matched.append(f"{name}({code})")
+    occupied_spans = []  # 記錄已被較長名稱佔用的字元區間
 
-    # 3. 僅拿去除媒體名稱後的主標題進行台股比對
-    for name, full_str in stocks_map.items():
-        if len(name) >= 2 and name in pure_title and full_str not in matched:
+    # 2. 優先比對標題內已包含括號與代號之格式（例：中華資安(7765)）
+    for match in re.finditer(r'([\u4e00-\u9fa5\w\-]+)[\(（](\d{4})[\)）]', pure_title):
+        name, code = match.group(1), match.group(2)
+        matched.append(f"{name}({code})")
+        occupied_spans.append((match.start(), match.end()))
+
+    # 3. 簡稱別名匹配（例：標題出現「台積」自動識別為台積電(2330)）
+    for alias, full_str in ALIAS_STOCK_MAP.items():
+        if alias in pure_title and full_str not in matched:
             matched.append(full_str)
+
+    # 4. 按股票名稱長度「由長到短」排序，確保長字串優先比對
+    sorted_stock_names = sorted(stocks_map.keys(), key=len, reverse=True)
+
+    for name in sorted_stock_names:
+        full_str = stocks_map[name]
+        
+        # 跳過通用詞與技術術語（例：介面、材料）
+        if name in AMBIGUOUS_STOCK_NAMES:
+            continue
+            
+        if len(name) >= 2 and name in pure_title and full_str not in matched:
+            for match in re.finditer(re.escape(name), pure_title):
+                start, end = match.start(), match.end()
+                
+                # 檢查是否與已被佔用之區域重疊
+                is_overlapping = any(
+                    o_start <= start and end <= o_end 
+                    for o_start, o_end in occupied_spans
+                )
+                
+                if not is_overlapping:
+                    matched.append(full_str)
+                    occupied_spans.append((start, end))
+                    break
 
     res_str = "、".join(matched) if matched else ""
     
-    # 格式防護：若結果包含燈號或「無」字樣，直接清空為空字串
+    # 5. 格式防護：若結果包含燈號或「無」字樣，直接清空
     if any(icon in res_str for icon in ["🔴", "🟡", "⚪", "⚫", "無"]):
         return ""
         
