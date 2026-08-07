@@ -238,6 +238,13 @@ def init_db():
             is_ai INTEGER DEFAULT 1
         )
     """)
+    
+    # 自動檢查並補上舊版資料庫可能缺少的 category 欄位
+    cursor.execute("PRAGMA table_info(news)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "category" not in columns:
+        cursor.execute("ALTER TABLE news ADD COLUMN category TEXT DEFAULT '產業'")
+
     conn.commit()
     conn.close()
     clean_old_news()
@@ -378,7 +385,7 @@ def process_single_news(entry, media_name, cursor, conn):
         return 0
 
     # 2. 攔截無效首頁標題
-    clean_t = clean_title_from_comparison = clean_title_for_comparison(title)
+    clean_t = clean_title_for_comparison(title)
     invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
     if title.strip() in invalid_titles or len(clean_t) < 5:
         return 0
