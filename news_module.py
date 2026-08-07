@@ -24,7 +24,8 @@ def clean_old_news():
     try:
         conn = sqlite3.connect("news.db")
         cursor = conn.cursor()
-        cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+        # 維持近三天資料
+        cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
         conn.commit()
         conn.close()
@@ -155,7 +156,6 @@ def analyze_news_with_ai(title, source):
     except Exception as e:
         error_str = str(e)
         if "429" in error_str or "rate_limit" in error_str.lower():
-            # 【智慧過濾備援】：當 API 滿載時，嚴格檢查標題是否包含財經關鍵字
             financial_terms = ["股", "市", "營收", "財報", "獲利", "半導體", "科技", "金管會", "央行", "指數", "供應鏈", "大單", "法人", "外資", "上市", "櫃", "重訊"]
             has_finance_keyword = any(term in title for term in financial_terms)
             
@@ -189,24 +189,23 @@ def fetch_and_store_news():
     
     target_queries, query_status = generate_dynamic_queries()
     logs.append(f"【步驟一】關鍵字狀態：{query_status}")
-    logs.append(f"【步驟一】使用的搜尋詞：{target_queries}")
     
     conn = sqlite3.connect("news.db")
     cursor = conn.cursor()
     added_count = 0
     total_fetched = 0
     
-    # 鎖定三大專業財經媒體：工商時報、經濟日報、鉅亨網
+    # 限制僅抓取工商時報、經濟日報與鉅亨網
     media_filter = "site:ctee.com.tw OR site:edn.udn.com OR site:cnyes.com"
     
     for q in target_queries:
-        # 將專業媒體限制條件與查詢詞及時間區間結合
-        query_with_time = f"{q} ({media_filter}) when:14d"
+        # 修改為近三天 (when:3d) 並套用媒體篩選
+        query_with_time = f"{q} ({media_filter}) when:3d"
         encoded_query = urllib.parse.quote(query_with_time)
         rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         feed = feedparser.parse(rss_url)
         total_fetched += len(feed.entries)
-        logs.append(f"【步驟二】搜尋詞「{q} (限定三大專業財經媒體, 近兩週)」抓取到原始新聞：{len(feed.entries)} 篇")
+        logs.append(f"【步驟二】搜尋詞「{q} (限定三大媒體, 近三天)」抓取到原始新聞：{len(feed.entries)} 篇")
         
         for entry in feed.entries:
             title = entry.title
@@ -238,7 +237,7 @@ def fetch_and_store_news():
                 
     conn.commit()
     conn.close()
-    logs.append(f"【步驟三】總共處理原始文章 {total_fetched} 篇，成功寫入高價值情報 {added_count} 筆。")
+    logs.append(f"【步驟三】總共處理原始文章 {total_fetched} 篇，成功寫入近三日高價值情報 {added_count} 筆。")
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=30, importance_filter=None, sort_by="時間新到舊"):
