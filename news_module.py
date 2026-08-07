@@ -66,7 +66,7 @@ CATALYST_TERMS = [
     "轉換公司債", "違約", "股東會", "董事會", "子公司", "上市", "上櫃",
     "外資", "投信", "三大法人", "法人", "主力", "買超", "賣超", "借券", "官股",
     "漲停", "跌停", "漲停板", "跌停板", "鎖死", "全額交割",
-    "融資", "融券", "追繳", "斷頭", "當沖", "鉅額交易", "違約交割", "暫停交易",
+    "融資", "融券", "追繳", "斷頭", "當沖", "鋸額交易", "違約交割", "暫停交易",
     "半導體", "晶圓代工", "先進封裝", "CoWoS", "CPO", "矽光子", "水冷", "散熱", 
     "液冷", "浸沒式", "伺服器", "ASIC", "IP", "CCL", "PCB", "機器人", "算力", 
     "晶片", "光通訊", "HBM", "玻璃基板", "BBU", "備用電源", "AI PC", "AI 手機", 
@@ -200,49 +200,48 @@ def extract_stocks_by_rules(title):
         
     return res_str
 
+def init_db():
+    """初始化資料庫並設定併發 WAL 模式"""
+    with sqlite3.connect("news.db", timeout=20) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE,
+                title TEXT,
+                source TEXT,
+                published_date TEXT,
+                summary TEXT,
+                importance TEXT,
+                category TEXT,
+                impact_companies TEXT,
+                report_count INTEGER DEFAULT 1,
+                is_ai INTEGER DEFAULT 1
+            )
+        """)
+        conn.commit()
+    clean_old_news()
+
 def clean_old_news():
     try:
-        conn = sqlite3.connect("news.db")
-        cursor = conn.cursor()
-        cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect("news.db", timeout=20) as conn:
+            cursor = conn.cursor()
+            cutoff_date = (datetime.datetime.now(TZ_TAIPEI) - datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("DELETE FROM news WHERE published_date < ?", (cutoff_date,))
+            conn.commit()
     except Exception:
         pass
 
 def clear_all_news():
     try:
-        conn = sqlite3.connect("news.db")
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM news")
-        conn.commit()
-        conn.close()
-        return True
+        with sqlite3.connect("news.db", timeout=20) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM news")
+            conn.commit()
+            return True
     except Exception:
         return False
-
-def init_db():
-    conn = sqlite3.connect("news.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS news (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT UNIQUE,
-            title TEXT,
-            source TEXT,
-            published_date TEXT,
-            summary TEXT,
-            importance TEXT,
-            category TEXT,
-            impact_companies TEXT,
-            report_count INTEGER DEFAULT 1,
-            is_ai INTEGER DEFAULT 1
-        )
-    """)
-    conn.commit()
-    conn.close()
-    clean_old_news()
 
 def parse_pub_date(published_str):
     try:
@@ -266,7 +265,7 @@ def clean_url_params(url):
     return url.rstrip('?&')
 
 def parse_ai_response(text, title):
-    """精準清洗 AI 回傳資料"""
+    """精準清洗 AI 回傳，包含 6 大核心類型解析"""
     summary, importance, category = "", "⚪", "產業"
     for line in text.split("\n"):
         line_str = line.strip()
@@ -297,7 +296,7 @@ def parse_ai_response(text, title):
     return summary, importance, category, impact_companies, 1
 
 def fallback_rule_analysis(title):
-    """本地備援分析機制"""
+    """無 AI 模式下的備援規則比對"""
     has_catalyst = any(term in title for term in CATALYST_TERMS)
     if not has_catalyst:
         return "", "⚪", "產業", "", 0
@@ -306,10 +305,9 @@ def fallback_rule_analysis(title):
     return "", "🟡", "產業", matched_stock, 0
 
 def analyze_news_with_ai(title, source):
-    """AI 同步產出重要性、摘要與類別，並具備自動熔斷機制"""
+    """AI 分析功能，具備超時限制與額度耗盡自動熔斷機制"""
     global AI_CIRCUIT_BROKEN
 
-    # 若熔斷已觸發，直接進入本地規則分析
     if AI_CIRCUIT_BROKEN:
         return fallback_rule_analysis(title)
 
@@ -339,7 +337,7 @@ def analyze_news_with_ai(title, source):
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
-    # 1. 嘗試 Groq 70B (超時設為 4 秒)
+    # 1. 嘗試 Groq 70B (超時 4 秒)
     if groq_key:
         try:
             client = Groq(api_key=groq_key, timeout=4.0)
@@ -351,11 +349,11 @@ def analyze_news_with_ai(title, source):
             return parse_ai_response(response.choices[0].message.content.strip(), title)
         except Exception as e:
             err_str = str(e).lower()
-            if "rate_limit" in err_str or "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
+            if any(k in err_str for k in ["rate_limit", "quota", "429", "resource_exhausted"]):
                 AI_CIRCUIT_BROKEN = True
                 return fallback_rule_analysis(title)
 
-    # 2. 嘗試 Gemini 1.5 Flash (超時設為 4 秒)
+    # 2. 嘗試 Gemini 1.5 Flash (超時 4 秒)
     if gemini_key and HAS_GEMINI_SDK and not AI_CIRCUIT_BROKEN:
         try:
             genai.configure(api_key=gemini_key)
@@ -364,11 +362,11 @@ def analyze_news_with_ai(title, source):
             return parse_ai_response(response.text.strip(), title)
         except Exception as e:
             err_str = str(e).lower()
-            if "quota" in err_str or "resource_exhausted" in err_str or "429" in err_str:
+            if any(k in err_str for k in ["quota", "resource_exhausted", "429"]):
                 AI_CIRCUIT_BROKEN = True
                 return fallback_rule_analysis(title)
 
-    # 3. 嘗試 Groq 8B (超時設為 3 秒)
+    # 3. 嘗試 Groq 8B (超時 3 秒)
     if groq_key and not AI_CIRCUIT_BROKEN:
         try:
             client = Groq(api_key=groq_key, timeout=3.0)
@@ -380,91 +378,89 @@ def analyze_news_with_ai(title, source):
             return parse_ai_response(response.choices[0].message.content.strip(), title)
         except Exception as e:
             err_str = str(e).lower()
-            if "rate_limit" in err_str or "quota" in err_str or "429" in err_str:
+            if any(k in err_str for k in ["rate_limit", "quota", "429"]):
                 AI_CIRCUIT_BROKEN = True
 
-    # 所有 AI API 均失敗或超時後降級回本地規則
     return fallback_rule_analysis(title)
 
 def fetch_and_store_news():
+    """抓取新聞、進行 AI 解析並儲存至 SQLite，具備安全併發控制"""
     global AI_CIRCUIT_BROKEN
-    AI_CIRCUIT_BROKEN = False  # 新一輪任務開始時重置熔斷狀態
+    AI_CIRCUIT_BROKEN = False  # 每輪啟動重置熔斷狀態
     
     init_db()
     logs = []
     
-    conn = sqlite3.connect("news.db")
-    cursor = conn.cursor()
     added_count = 0
     total_fetched = 0
     
     media_targets = [
         ("工商時報", "site:ctee.com.tw"),
         ("經濟日報", "site:edn.udn.com"),
-        ("鉅亨網", "site:cnyes.com")
+        ("鋸亨網", "site:cnyes.com")
     ]
     
-    for media_name, media_site in media_targets:
-        query_with_time = f"{media_site} when:3d"
-        encoded_query = urllib.parse.quote(query_with_time)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    with sqlite3.connect("news.db", timeout=20) as conn:
+        cursor = conn.cursor()
         
-        feed = feedparser.parse(rss_url)
-        site_fetched = len(feed.entries)
-        total_fetched += site_fetched
-        logs.append(f"【檢索】{media_name}（近三天抓取到 {site_fetched} 篇原始新聞）")
-        
-        for entry in feed.entries:
-            title = entry.title
-            url = clean_url_params(entry.link)
-            source = entry.get('source', {}).get('title', media_name)
-            raw_published = entry.get('published', '')
-            published = parse_pub_date(raw_published)
+        for media_name, media_site in media_targets:
+            query_with_time = f"{media_site} when:3d"
+            encoded_query = urllib.parse.quote(query_with_time)
+            rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
             
-            if any(ex in title for ex in EXCLUDE_KEYWORDS):
-                continue
-
-            clean_t = clean_title_for_comparison(title)
-            invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
-            if title.strip() in invalid_titles or len(clean_t) < 5:
-                continue
-
-            if "cnyes.com" in url and "/news/id/" not in url:
-                continue
+            feed = feedparser.parse(rss_url)
+            site_fetched = len(feed.entries)
+            total_fetched += site_fetched
+            logs.append(f"【檢索】{media_name}（近三天抓取到 {site_fetched} 篇原始新聞）")
+            
+            for entry in feed.entries:
+                title = entry.title
+                url = clean_url_params(entry.link)
+                source = entry.get('source', {}).get('title', media_name)
+                raw_published = entry.get('published', '')
+                published = parse_pub_date(raw_published)
                 
-            cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
-            if cursor.fetchone():
-                continue
-
-            if clean_t and len(clean_t) >= 6:
-                cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
-                existing = cursor.fetchone()
-                if existing:
-                    news_id = existing[0]
-                    cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
+                if any(ex in title for ex in EXCLUDE_KEYWORDS):
                     continue
+
+                clean_t = clean_title_for_comparison(title)
+                invalid_titles = ["鉅亨網", "鉅亨網 - 鉅亨網", "經濟日報", "工商時報", "cnyes.com", "ctee.com.tw", "edn.udn.com", "頭條新聞"]
+                if title.strip() in invalid_titles or len(clean_t) < 5:
+                    continue
+
+                if "cnyes.com" in url and "/news/id/" not in url:
+                    continue
+                    
+                cursor.execute("SELECT id FROM news WHERE url = ?", (url,))
+                if cursor.fetchone():
+                    continue
+
+                if clean_t and len(clean_t) >= 6:
+                    cursor.execute("SELECT id, importance FROM news WHERE title LIKE ?", (f"%{clean_t}%",))
+                    existing = cursor.fetchone()
+                    if existing:
+                        news_id = existing[0]
+                        cursor.execute("UPDATE news SET report_count = report_count + 1, published_date = ? WHERE id = ?", (published, news_id))
+                        continue
+                    
+                summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
                 
-            summary, importance, category, impact_companies, is_ai = analyze_news_with_ai(title, source)
-            
-            # 若 AI 正常運作且未熔斷，維持微小延遲以防過快；若已熔斷則零延遲運行
-            if is_ai == 1 and not AI_CIRCUIT_BROKEN:
-                time.sleep(0.2)
-                
-            if importance == "⚪":
-                continue
-                
-            try:
-                cursor.execute("""
-                    INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """, (url, title, source, published, summary, importance, category, impact_companies, is_ai))
-                added_count += 1
-            except Exception as e:
-                logs.append(f"寫入資料庫錯誤: {e}")
-                
-    conn.commit()
-    conn.close()
-    
+                if is_ai == 1 and not AI_CIRCUIT_BROKEN:
+                    time.sleep(0.2)
+                    
+                if importance == "⚪":
+                    continue
+                    
+                try:
+                    cursor.execute("""
+                        INSERT INTO news (url, title, source, published_date, summary, importance, category, impact_companies, report_count, is_ai)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    """, (url, title, source, published, summary, importance, category, impact_companies, is_ai))
+                    conn.commit()
+                    added_count += 1
+                except Exception as e:
+                    logs.append(f"寫入資料庫錯誤: {e}")
+                    
     if AI_CIRCUIT_BROKEN:
         logs.append("【警告】檢測到 AI API 額度用盡或回應超時，已自動熔斷並切換至本地規則模式。")
         
@@ -472,9 +468,8 @@ def fetch_and_store_news():
     return added_count, logs
 
 def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by="時間新到舊"):
+    """安全讀取新聞資料庫紀錄"""
     init_db()
-    conn = sqlite3.connect("news.db")
-    cursor = conn.cursor()
     
     sql = "SELECT published_date, title, source, url, summary, importance, category, impact_companies, report_count, is_ai FROM news WHERE 1=1"
     params = []
@@ -495,7 +490,9 @@ def get_news_from_db(search_query="", limit=50, importance_filter=None, sort_by=
     sql += " LIMIT ?"
     params.append(limit)
     
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    conn.close()
+    with sqlite3.connect("news.db", timeout=20) as conn:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        
     return rows
